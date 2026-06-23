@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { UseCase, Status } from '../data/usecases';
 
 const CATEGORIES = [
@@ -81,7 +81,11 @@ function blankForm(): FormState {
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function Label({ children }: { children: React.ReactNode }) {
-  return <label className="block text-xs font-semibold text-neutral-500 uppercase tracking-wide mb-1">{children}</label>;
+  return (
+    <label className="block text-xs font-semibold text-neutral-500 uppercase tracking-wide mb-1">
+      {children}
+    </label>
+  );
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -93,46 +97,153 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-const inputCls = 'w-full px-3 py-2 rounded-lg border border-neutral-200 bg-white text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent';
+const inputCls =
+  'w-full px-3 py-2 rounded-lg border border-neutral-200 bg-white text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent';
 const textareaCls = `${inputCls} resize-y min-h-[80px]`;
 
-// ── Main component ────────────────────────────────────────────────────────────
+// ── Auth modal ────────────────────────────────────────────────────────────────
+
+function AuthModal({
+  onVerified,
+}: {
+  onVerified: (key: string) => void;
+}) {
+  const [input, setInput] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!input.trim()) return;
+    setLoading(true);
+    setError('');
+
+    try {
+      const res = await fetch('/api/admin/verify', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${input}` },
+      });
+      if (res.ok) {
+        onVerified(input);
+      } else if (res.status === 401) {
+        setError('Incorrect admin key. Please try again.');
+        setInput('');
+        inputRef.current?.focus();
+      } else {
+        const text = await res.text();
+        setError(text || 'Server error. Check that ADMIN_SECRET is set in Vercel.');
+      }
+    } catch {
+      setError('Could not reach the server. Check your connection.');
+    }
+
+    setLoading(false);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/70 backdrop-blur-sm">
+      <div className="w-full max-w-sm mx-4 bg-white rounded-2xl shadow-2xl overflow-hidden">
+        {/* Header strip */}
+        <div className="h-1.5 w-full bg-brand" />
+
+        <div className="px-8 py-8">
+          {/* Lock icon */}
+          <div className="w-12 h-12 rounded-2xl bg-brand/10 flex items-center justify-center mb-5">
+            <svg
+              viewBox="0 0 24 24"
+              className="h-6 w-6 text-brand"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+          </div>
+
+          <h2 className="text-xl font-bold text-neutral-900 mb-1">Admin Access</h2>
+          <p className="text-sm text-neutral-500 mb-6">
+            Enter your admin key to manage use cases.
+          </p>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <Label>Admin Key</Label>
+              <input
+                ref={inputRef}
+                type="password"
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                placeholder="Enter admin key…"
+                autoComplete="off"
+                className={inputCls}
+              />
+            </div>
+
+            {error && (
+              <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-red-50 border border-red-200">
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4 text-red-500 flex-shrink-0 mt-0.5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+                <p className="text-xs text-red-700">{error}</p>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading || !input.trim()}
+              className="w-full py-2.5 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {loading ? 'Verifying…' : 'Unlock'}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main panel ────────────────────────────────────────────────────────────────
 
 export default function AdminPanel() {
-  const [keyInput, setKeyInput] = useState('');
-  const [authKey, setAuthKey] = useState('');
+  // Key lives in memory only — cleared on every page refresh, never persisted
+  const [authKey, setAuthKey] = useState<string | null>(null);
   const [usecases, setUsecases] = useState<UseCase[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
 
-  // 'new' = creating, string = editing by id, null = nothing selected
   const [selectedId, setSelectedId] = useState<string | 'new' | null>(null);
   const [form, setForm] = useState<FormState>(blankForm());
   const [dirty, setDirty] = useState(false);
 
-  // Restore key from sessionStorage
-  useEffect(() => {
-    const saved = sessionStorage.getItem('nuaig_admin_key') ?? '';
-    setAuthKey(saved);
-    setKeyInput(saved);
-  }, []);
+  function handleVerified(key: string) {
+    setAuthKey(key);
+    loadUseCases();
+  }
 
-  // Load use cases
-  useEffect(() => {
-    fetch('/api/usecases')
-      .then(r => r.json())
-      .then((data: UseCase[]) => {
-        setUsecases(data);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, []);
-
-  function saveKey() {
-    sessionStorage.setItem('nuaig_admin_key', keyInput);
-    setAuthKey(keyInput);
-    setMessage({ type: 'ok', text: 'Admin key saved for this session.' });
+  async function loadUseCases() {
+    setLoading(true);
+    try {
+      const data: UseCase[] = await fetch('/api/usecases').then(r => r.json());
+      setUsecases(data);
+    } catch {
+      setMessage({ type: 'error', text: 'Failed to load use cases.' });
+    }
+    setLoading(false);
   }
 
   function selectCase(uc: UseCase) {
@@ -154,9 +265,11 @@ export default function AdminPanel() {
   function setField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm(prev => {
       const next = { ...prev, [key]: value };
-      // Auto-generate id from title when creating
       if (key === 'title' && selectedId === 'new' && !dirty) {
-        next.id = (value as string).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        next.id = (value as string)
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-|-$/g, '');
       }
       return next;
     });
@@ -180,10 +293,6 @@ export default function AdminPanel() {
   }
 
   async function handleSave() {
-    if (!authKey) {
-      setMessage({ type: 'error', text: 'Enter and save your admin key first.' });
-      return;
-    }
     setSaving(true);
     setMessage(null);
     try {
@@ -191,7 +300,10 @@ export default function AdminPanel() {
       let next: UseCase[];
       if (selectedId === 'new') {
         if (usecases.some(u => u.id === uc.id)) {
-          setMessage({ type: 'error', text: `ID "${uc.id}" already exists. Change the title or edit the ID.` });
+          setMessage({
+            type: 'error',
+            text: `ID "${uc.id}" already exists. Change the title or edit the ID.`,
+          });
           setSaving(false);
           return;
         }
@@ -211,13 +323,8 @@ export default function AdminPanel() {
   }
 
   async function handleDelete() {
-    if (!authKey) {
-      setMessage({ type: 'error', text: 'Enter and save your admin key first.' });
-      return;
-    }
     const target = usecases.find(u => u.id === selectedId);
     if (!target || !confirm(`Delete "${target.title}"? This cannot be undone.`)) return;
-
     setSaving(true);
     setMessage(null);
     try {
@@ -235,47 +342,28 @@ export default function AdminPanel() {
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
+  // Show blocking modal until key is verified
+  if (!authKey) {
+    return <AuthModal onVerified={handleVerified} />;
+  }
+
   return (
     <div className="space-y-6">
-
-      {/* Admin key bar */}
-      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end p-4 rounded-xl bg-neutral-50 border border-neutral-200">
-        <div className="flex-1">
-          <Label>Admin Key</Label>
-          <input
-            type="password"
-            value={keyInput}
-            onChange={e => setKeyInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && saveKey()}
-            placeholder="Paste your ADMIN_SECRET here…"
-            className={inputCls}
-          />
-        </div>
-        <button
-          onClick={saveKey}
-          className="px-4 py-2 rounded-lg bg-neutral-900 text-white text-sm font-semibold hover:bg-neutral-700 transition-colors"
-        >
-          Save Key
-        </button>
-        {authKey && (
-          <span className="text-xs text-emerald-600 font-semibold self-center">Key set</span>
-        )}
-      </div>
-
       {/* Message banner */}
       {message && (
-        <div className={`px-4 py-3 rounded-lg text-sm font-medium ${
-          message.type === 'ok'
-            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-            : 'bg-red-50 text-red-700 border border-red-200'
-        }`}>
+        <div
+          className={`px-4 py-3 rounded-lg text-sm font-medium ${
+            message.type === 'ok'
+              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+              : 'bg-red-50 text-red-700 border border-red-200'
+          }`}
+        >
           {message.text}
         </div>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-        {/* Sidebar — use case list */}
+        {/* Sidebar */}
         <div className="lg:col-span-1">
           <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-100">
@@ -286,20 +374,25 @@ export default function AdminPanel() {
                 onClick={startNew}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand/90 transition-colors"
               >
-                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-3.5 w-3.5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                >
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
                 </svg>
                 Add New
               </button>
             </div>
 
             {selectedId === 'new' && (
-              <button
-                className="w-full text-left px-4 py-3 border-b border-neutral-100 bg-brand/5 border-l-2 border-l-brand"
-              >
+              <div className="w-full text-left px-4 py-3 border-b border-neutral-100 bg-brand/5 border-l-2 border-l-brand">
                 <div className="text-sm font-semibold text-brand">New Use Case</div>
                 <div className="text-xs text-neutral-500 mt-0.5">Unsaved</div>
-              </button>
+              </div>
             )}
 
             {usecases.map(uc => (
@@ -310,9 +403,13 @@ export default function AdminPanel() {
                   selectedId === uc.id ? 'bg-brand/5 border-l-2 border-l-brand' : ''
                 }`}
               >
-                <div className="text-sm font-semibold text-neutral-900 leading-snug">{uc.title}</div>
+                <div className="text-sm font-semibold text-neutral-900 leading-snug">
+                  {uc.title}
+                </div>
                 <div className="flex items-center gap-2 mt-1">
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_STYLES[uc.status]}`}>
+                  <span
+                    className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_STYLES[uc.status]}`}
+                  >
                     {uc.status}
                   </span>
                   <span className="text-xs text-neutral-400">{uc.category}</span>
@@ -327,7 +424,13 @@ export default function AdminPanel() {
           {selectedId === null ? (
             <div className="h-64 flex items-center justify-center text-neutral-400 rounded-xl border border-dashed border-neutral-200">
               <div className="text-center">
-                <svg viewBox="0 0 24 24" className="h-10 w-10 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-10 w-10 mx-auto mb-3 opacity-30"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                >
                   <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
                   <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
                 </svg>
@@ -363,7 +466,9 @@ export default function AdminPanel() {
                     onChange={e => setField('category', e.target.value)}
                   >
                     {CATEGORIES.map(c => (
-                      <option key={c} value={c}>{c}</option>
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
                     ))}
                   </select>
                 </Field>
@@ -374,13 +479,15 @@ export default function AdminPanel() {
                     onChange={e => setField('status', e.target.value as Status)}
                   >
                     {STATUSES.map(s => (
-                      <option key={s.value} value={s.value}>{s.label}</option>
+                      <option key={s.value} value={s.value}>
+                        {s.label}
+                      </option>
                     ))}
                   </select>
                 </Field>
               </div>
 
-              <Field label="Summary (one-line description shown on card)">
+              <Field label="Summary (shown on card)">
                 <textarea
                   className={textareaCls}
                   style={{ minHeight: 60 }}
@@ -390,7 +497,7 @@ export default function AdminPanel() {
                 />
               </Field>
 
-              <Field label="Description (full detail shown when expanded)">
+              <Field label="Description (shown when expanded)">
                 <textarea
                   className={textareaCls}
                   style={{ minHeight: 120 }}
@@ -406,7 +513,7 @@ export default function AdminPanel() {
                     className={textareaCls}
                     value={form.businessValue}
                     onChange={e => setField('businessValue', e.target.value)}
-                    placeholder={"Reduce admin overhead\nFaster care decisions"}
+                    placeholder={'Reduce admin overhead\nFaster care decisions'}
                   />
                 </Field>
                 <Field label="Tech Stack (one per line)">
@@ -414,7 +521,7 @@ export default function AdminPanel() {
                     className={textareaCls}
                     value={form.techStack}
                     onChange={e => setField('techStack', e.target.value)}
-                    placeholder={"Claude AI\nEMR Integration\nLLM"}
+                    placeholder={'Claude AI\nEMR Integration\nLLM'}
                   />
                 </Field>
               </div>
@@ -425,7 +532,7 @@ export default function AdminPanel() {
                     className={textareaCls}
                     value={form.limitations}
                     onChange={e => setField('limitations', e.target.value)}
-                    placeholder={"Requires EMR integration\nNeeds clinical review"}
+                    placeholder={'Requires EMR integration\nNeeds clinical review'}
                   />
                 </Field>
                 <Field label="Compliance Flags (one per line)">
@@ -433,7 +540,7 @@ export default function AdminPanel() {
                     className={textareaCls}
                     value={form.complianceFlags}
                     onChange={e => setField('complianceFlags', e.target.value)}
-                    placeholder={"HIPAA\nPHI Handling\nAudit Logging"}
+                    placeholder={'HIPAA\nPHI Handling\nAudit Logging'}
                   />
                 </Field>
               </div>
@@ -457,7 +564,6 @@ export default function AdminPanel() {
                 </Field>
               </div>
 
-              {/* Action buttons */}
               <div className="flex items-center justify-between pt-2 border-t border-neutral-100">
                 <div>
                   {selectedId !== 'new' && (
