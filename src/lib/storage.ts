@@ -19,7 +19,11 @@ export async function readUseCases(): Promise<UseCase[]> {
     const { blobs } = await list({ prefix: BLOB_PATHNAME });
     if (blobs.length === 0) return seedData;
 
-    const res = await fetch(blobs[0].url, { cache: 'no-store' });
+    // Private store: pass the token in the Authorization header
+    const res = await fetch(blobs[0].url, {
+      headers: { Authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN}` },
+      cache: 'no-store',
+    });
     if (!res.ok) return seedData;
     return (await res.json()) as UseCase[];
   } catch (e) {
@@ -34,8 +38,9 @@ export async function writeUseCases(data: UseCase[]): Promise<void> {
     return;
   }
   const { put } = await import('@vercel/blob');
+  // Use 'private' access to match the store's access configuration
   await put(BLOB_PATHNAME, JSON.stringify(data), {
-    access: 'public',
+    access: 'private',
     allowOverwrite: true,
     contentType: 'application/json',
   });
