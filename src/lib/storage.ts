@@ -1,0 +1,42 @@
+import type { UseCase } from '../data/usecases';
+import { usecases as seedData } from '../data/usecases';
+
+const BLOB_PATHNAME = 'usecases.json';
+
+// In-memory fallback when Blob is not configured (local dev without setup)
+let devMemory: UseCase[] | null = null;
+
+function isBlobConfigured(): boolean {
+  return Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+}
+
+export async function readUseCases(): Promise<UseCase[]> {
+  if (!isBlobConfigured()) {
+    return devMemory ?? seedData;
+  }
+  try {
+    const { list } = await import('@vercel/blob');
+    const { blobs } = await list({ prefix: BLOB_PATHNAME });
+    if (blobs.length === 0) return seedData;
+
+    const res = await fetch(blobs[0].url, { cache: 'no-store' });
+    if (!res.ok) return seedData;
+    return (await res.json()) as UseCase[];
+  } catch (e) {
+    console.error('[storage] Blob read error:', e);
+    return seedData;
+  }
+}
+
+export async function writeUseCases(data: UseCase[]): Promise<void> {
+  if (!isBlobConfigured()) {
+    devMemory = data;
+    return;
+  }
+  const { put } = await import('@vercel/blob');
+  await put(BLOB_PATHNAME, JSON.stringify(data), {
+    access: 'public',
+    allowOverwrite: true,
+    contentType: 'application/json',
+  });
+}

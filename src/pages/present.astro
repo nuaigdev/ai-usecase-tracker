@@ -1,7 +1,11 @@
 ---
+export const prerender = false;
+
 import Layout from '../layouts/Layout.astro';
 import PresentMode from '../components/PresentMode';
-import { usecases } from '../data/usecases';
+import { readUseCases } from '../lib/storage';
+
+const usecases = await readUseCases();
 ---
 <Layout title="Present — NuAig AI Solutions" present={true}>
   <PresentMode usecases={usecases} client:only="react" />

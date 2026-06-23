@@ -29,7 +29,7 @@ export const usecases: UseCase[] = [
   {
     id: "contract-management",
     title: "Contract Management Agent",
-    category: "Operations",
+    category: "Operations & Admin",
     status: "in-progress",
     summary:
       "Automatically extracts, centralises, and monitors contracts — flagging expiry dates, compliance gaps, and anomalies before they become problems.",
@@ -55,7 +55,7 @@ export const usecases: UseCase[] = [
   {
     id: "root-cause-analysis",
     title: "Root Cause Analysis Agent",
-    category: "Clinical",
+    category: "Resident Care",
     status: "in-progress",
     summary:
       "Correlates data across EMR, staffing, and medication systems to generate structured incident reports with root-cause hypotheses and prevention strategies.",
@@ -81,7 +81,7 @@ export const usecases: UseCase[] = [
   {
     id: "prior-authorization",
     title: "Prior Authorization AI Agent",
-    category: "Clinical",
+    category: "Resident Care",
     status: "planned",
     summary:
       "AI agent automates Medicare Part B prior authorization — validating ICD-10 codes, verifying provider NPIs, and cross-referencing live CMS national and local coverage policies before submission.",
@@ -116,7 +116,7 @@ export const usecases: UseCase[] = [
   {
     id: "voice-ai-suite",
     title: "Voice AI Suite",
-    category: "Voice AI",
+    category: "Resident Care",
     status: "planned",
     summary:
       "Seven intelligent voice agents across resident care, caregiver wellbeing, and family communication — replacing manual workflows with natural language AI calls.",
@@ -242,7 +242,7 @@ export const usecases: UseCase[] = [
   {
     id: "concierge-agent",
     title: "Concierge Agent (MS Teams Copilot)",
-    category: "Staff Tools",
+    category: "Staff & Workforce",
     status: "in-progress",
     summary:
       "A knowledge assistant embedded in MS Teams that lets concierge staff query protocols, retrieve SOPs, exchange handover notes, and escalate alerts — without leaving their existing workflow.",
@@ -268,7 +268,7 @@ export const usecases: UseCase[] = [
   {
     id: "newsletter-generator",
     title: "AI-Powered Newsletter Generator",
-    category: "Marketing & Comms",
+    category: "Operations & Admin",
     status: "live",
     summary:
       "Five-stage pipeline: domain crawl → AI filtering → LLM summarisation → branded HTML newsletter → automated email delivery. Zero manual research required.",
@@ -294,7 +294,7 @@ export const usecases: UseCase[] = [
   {
     id: "prs-financial-review",
     title: "PRS Financial Review",
-    category: "Sales & Finance",
+    category: "Sales & Admissions",
     status: "live",
     summary:
       "AI-powered year-by-year financial modelling qualifies senior living prospects with actuarial-grade projections, survivability scenarios, and instant YES/CAUTION/NO decisions.",

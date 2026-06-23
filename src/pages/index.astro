@@ -1,8 +1,12 @@
 ---
+export const prerender = false;
+
 import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
 import CardGrid from '../components/CardGrid';
-import { usecases } from '../data/usecases';
+import { readUseCases } from '../lib/storage';
+
+const usecases = await readUseCases();
 
 const stats = {
   total: usecases.length,

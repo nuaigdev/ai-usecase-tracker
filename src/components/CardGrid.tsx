@@ -8,13 +8,12 @@ const STATUS_CONFIG = {
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
-  Operations:             'bg-violet-100 text-violet-700',
-  Clinical:               'bg-rose-100 text-rose-700',
-  'Voice AI':             'bg-sky-100 text-sky-700',
-  'Staff Tools':          'bg-indigo-100 text-indigo-700',
-  'Marketing & Comms':    'bg-teal-100 text-teal-700',
-  'Sales & Finance':      'bg-orange-100 text-orange-700',
+  'Resident Care':        'bg-rose-100 text-rose-700',
+  'Operations & Admin':   'bg-violet-100 text-violet-700',
+  'Staff & Workforce':    'bg-indigo-100 text-indigo-700',
+  'Sales & Admissions':   'bg-orange-100 text-orange-700',
   'Quality & Compliance': 'bg-green-100 text-green-700',
+  'Family & Community':   'bg-sky-100 text-sky-700',
 };
 
 function categoryColor(cat: string) {
