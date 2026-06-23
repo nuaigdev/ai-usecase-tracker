@@ -258,7 +258,7 @@ function UseCaseSlide({
             style={{ animation: 'pmSlideUp 0.4s 0.2s ease-out both' }}
           >
             <p
-              className="text-white/58 leading-relaxed"
+              className="text-white/60 leading-relaxed"
               style={{ fontSize: 'clamp(0.82rem, 1.2vw, 0.95rem)' }}
             >
               {uc.description}
@@ -395,7 +395,7 @@ export default function PresentMode({ usecases }: { usecases: UseCase[] }) {
         (the slide content area). Nothing inside may exceed this boundary.
       */}
       <div
-        className="fixed inset-0 flex flex-col overflow-hidden select-none"
+        className="fixed inset-0 flex flex-col overflow-hidden select-none text-white"
         style={{
           backgroundImage: `
             radial-gradient(ellipse at 50% -10%, rgba(6,155,223,0.12) 0%, transparent 60%),
