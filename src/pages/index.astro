@@ -1,0 +1,48 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Header from '../components/Header.astro';
+import CardGrid from '../components/CardGrid';
+import { usecases } from '../data/usecases';
+
+const stats = {
+  total: usecases.length,
+  live: usecases.filter(u => u.status === 'live').length,
+  inProgress: usecases.filter(u => u.status === 'in-progress').length,
+  planned: usecases.filter(u => u.status === 'planned').length,
+};
+---
+<Layout title="AI Use Cases — NuAig">
+  <Header />
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+    <!-- Hero -->
+    <div class="mb-10">
+      <h1 class="text-3xl font-bold text-neutral-900 mb-2">AI-Powered Solutions</h1>
+      <p class="text-neutral-500 text-base max-w-2xl">
+        Intelligent agents reducing caregiver burnout and improving resident outcomes across senior living communities.
+      </p>
+    </div>
+
+    <!-- Stats bar -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-10">
+      <div class="bg-white rounded-xl border border-neutral-200 px-5 py-4">
+        <div class="text-2xl font-bold text-neutral-900">{stats.total}</div>
+        <div class="text-xs text-neutral-500 font-medium mt-0.5">Total Use Cases</div>
+      </div>
+      <div class="bg-white rounded-xl border border-neutral-200 px-5 py-4">
+        <div class="text-2xl font-bold text-emerald-600">{stats.live}</div>
+        <div class="text-xs text-neutral-500 font-medium mt-0.5">Live</div>
+      </div>
+      <div class="bg-white rounded-xl border border-neutral-200 px-5 py-4">
+        <div class="text-2xl font-bold text-amber-500">{stats.inProgress}</div>
+        <div class="text-xs text-neutral-500 font-medium mt-0.5">In Progress</div>
+      </div>
+      <div class="bg-white rounded-xl border border-neutral-200 px-5 py-4">
+        <div class="text-2xl font-bold text-slate-500">{stats.planned}</div>
+        <div class="text-xs text-neutral-500 font-medium mt-0.5">Planned</div>
+      </div>
+    </div>
+
+    <!-- Interactive card grid (React island) -->
+    <CardGrid usecases={usecases} client:load />
+  </main>
+</Layout>

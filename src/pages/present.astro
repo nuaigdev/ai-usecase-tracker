@@ -1,0 +1,8 @@
+---
+import Layout from '../layouts/Layout.astro';
+import PresentMode from '../components/PresentMode';
+import { usecases } from '../data/usecases';
+---
+<Layout title="Present — NuAig AI Solutions" present={true}>
+  <PresentMode usecases={usecases} client:only="react" />
+</Layout>
