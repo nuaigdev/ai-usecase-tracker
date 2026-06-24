@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import type { UseCase, Status } from '../data/usecases';
+import type { UseCase, SubCase, Status } from '../data/usecases';
 
 const CATEGORIES = [
   'Resident Care',
@@ -24,6 +24,15 @@ const STATUS_STYLES: Record<Status, string> = {
 
 // ── Form helpers ──────────────────────────────────────────────────────────────
 
+interface SubCaseFormState {
+  id: string;
+  title: string;
+  summary: string;
+  description: string;
+  businessValue: string;
+  techStack: string;
+}
+
 interface FormState {
   id: string;
   title: string;
@@ -37,6 +46,35 @@ interface FormState {
   complianceFlags: string;
   owner: string;
   lastUpdated: string;
+  hasSubCases: boolean;
+  subCases: SubCaseFormState[];
+}
+
+const slugify = (s: string) =>
+  s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+const splitLines = (s: string) => s.split('\n').map(l => l.trim()).filter(Boolean);
+
+function toSubCaseForm(sc: SubCase): SubCaseFormState {
+  return {
+    id: sc.id,
+    title: sc.title,
+    summary: sc.summary ?? '',
+    description: sc.description ?? '',
+    businessValue: (sc.businessValue ?? []).join('\n'),
+    techStack: (sc.techStack ?? []).join('\n'),
+  };
+}
+
+function fromSubCaseForm(f: SubCaseFormState): SubCase {
+  return {
+    id: f.id || slugify(f.title),
+    title: f.title,
+    summary: f.summary,
+    description: f.description,
+    businessValue: splitLines(f.businessValue),
+    techStack: splitLines(f.techStack),
+  };
 }
 
 function toForm(uc: Partial<UseCase>): FormState {
@@ -53,32 +91,41 @@ function toForm(uc: Partial<UseCase>): FormState {
     complianceFlags: (uc.complianceFlags ?? []).join('\n'),
     owner: uc.owner ?? 'NuAig',
     lastUpdated: uc.lastUpdated ?? new Date().toISOString().split('T')[0],
+    hasSubCases: !!uc.subCases?.length,
+    subCases: (uc.subCases ?? []).map(toSubCaseForm),
   };
 }
 
 function fromForm(f: FormState): UseCase {
-  const lines = (s: string) => s.split('\n').map(l => l.trim()).filter(Boolean);
-  return {
-    id: f.id || f.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
+  const uc: UseCase = {
+    id: f.id || slugify(f.title),
     title: f.title,
     category: f.category,
     status: f.status,
     summary: f.summary,
     description: f.description,
-    businessValue: lines(f.businessValue),
-    techStack: lines(f.techStack),
-    limitations: lines(f.limitations),
-    complianceFlags: lines(f.complianceFlags),
+    businessValue: splitLines(f.businessValue),
+    techStack: splitLines(f.techStack),
+    limitations: splitLines(f.limitations),
+    complianceFlags: splitLines(f.complianceFlags),
     owner: f.owner || undefined,
     lastUpdated: f.lastUpdated || undefined,
   };
+  if (f.hasSubCases && f.subCases.length > 0) {
+    uc.subCases = f.subCases.map(fromSubCaseForm);
+  }
+  return uc;
+}
+
+function blankSubCase(): SubCaseFormState {
+  return { id: '', title: '', summary: '', description: '', businessValue: '', techStack: '' };
 }
 
 function blankForm(): FormState {
   return toForm({});
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+// ── Shared UI primitives ──────────────────────────────────────────────────────
 
 function Label({ children }: { children: React.ReactNode }) {
   return (
@@ -101,13 +148,224 @@ const inputCls =
   'w-full px-3 py-2 rounded-lg border border-neutral-200 bg-white text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent';
 const textareaCls = `${inputCls} resize-y min-h-[80px]`;
 
+// ── Sub-case row ──────────────────────────────────────────────────────────────
+
+function SubCaseRow({
+  sc,
+  idx,
+  expanded,
+  onToggleExpand,
+  onUpdate,
+  onRemove,
+}: {
+  sc: SubCaseFormState;
+  idx: number;
+  expanded: boolean;
+  onToggleExpand: () => void;
+  onUpdate: (key: keyof SubCaseFormState, value: string) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="rounded-lg border border-neutral-200 overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-2.5 bg-neutral-50">
+        <span className="w-5 h-5 rounded-full bg-neutral-200 text-neutral-600 text-xs font-bold flex items-center justify-center flex-shrink-0">
+          {idx + 1}
+        </span>
+        <span className="text-sm font-medium text-neutral-700 flex-1 truncate min-w-0">
+          {sc.title || <span className="text-neutral-400 italic">Untitled sub-case</span>}
+        </span>
+        <button
+          type="button"
+          onClick={onRemove}
+          className="p-1 rounded text-neutral-400 hover:text-red-500 transition-colors flex-shrink-0"
+          title="Remove sub-case"
+        >
+          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6l-1 14H6L5 6" />
+            <path d="M10 11v6M14 11v6" />
+            <path d="M9 6V4h6v2" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          onClick={onToggleExpand}
+          className="p-1 rounded text-neutral-400 hover:text-neutral-600 transition-colors flex-shrink-0"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            className={`h-4 w-4 transition-transform ${expanded ? 'rotate-180' : ''}`}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
+      </div>
+
+      {expanded && (
+        <div className="p-4 space-y-4 border-t border-neutral-100">
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Title">
+              <input
+                className={inputCls}
+                value={sc.title}
+                onChange={e => onUpdate('title', e.target.value)}
+                placeholder="e.g. Post-Visit Feedback"
+              />
+            </Field>
+            <Field label="ID (auto-generated)">
+              <input
+                className={inputCls}
+                value={sc.id}
+                onChange={e => onUpdate('id', e.target.value)}
+                placeholder="post-visit-feedback"
+              />
+            </Field>
+          </div>
+          <Field label="Summary">
+            <textarea
+              className={textareaCls}
+              style={{ minHeight: 56 }}
+              value={sc.summary}
+              onChange={e => onUpdate('summary', e.target.value)}
+              placeholder="One-line description shown as subtitle…"
+            />
+          </Field>
+          <Field label="Description">
+            <textarea
+              className={textareaCls}
+              style={{ minHeight: 100 }}
+              value={sc.description}
+              onChange={e => onUpdate('description', e.target.value)}
+              placeholder="Full description of this sub-case…"
+            />
+          </Field>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Business Value (one per line)">
+              <textarea
+                className={textareaCls}
+                value={sc.businessValue}
+                onChange={e => onUpdate('businessValue', e.target.value)}
+                placeholder={'Reduces manual work\nSaves staff time'}
+              />
+            </Field>
+            <Field label="Tech Stack (one per line)">
+              <textarea
+                className={textareaCls}
+                value={sc.techStack}
+                onChange={e => onUpdate('techStack', e.target.value)}
+                placeholder={'Voice AI\nNLP\nLLM'}
+              />
+            </Field>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Sub-cases section ─────────────────────────────────────────────────────────
+
+function SubCasesSection({
+  hasSubCases,
+  subCases,
+  onToggle,
+  onChange,
+  onDirty,
+}: {
+  hasSubCases: boolean;
+  subCases: SubCaseFormState[];
+  onToggle: () => void;
+  onChange: (next: SubCaseFormState[]) => void;
+  onDirty: () => void;
+}) {
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+
+  function addSubCase() {
+    const next = [...subCases, blankSubCase()];
+    onChange(next);
+    setExpandedIdx(next.length - 1);
+    onDirty();
+  }
+
+  function updateSubCaseField(idx: number, key: keyof SubCaseFormState, value: string) {
+    const sc = { ...subCases[idx], [key]: value };
+    if (key === 'title' && !subCases[idx].id) {
+      sc.id = slugify(value);
+    }
+    onChange(subCases.map((s, i) => (i === idx ? sc : s)));
+    onDirty();
+  }
+
+  function removeSubCase(idx: number) {
+    if (!confirm('Remove this sub-case?')) return;
+    onChange(subCases.filter((_, i) => i !== idx));
+    if (expandedIdx === idx) setExpandedIdx(null);
+    else if (expandedIdx !== null && expandedIdx > idx) setExpandedIdx(expandedIdx - 1);
+    onDirty();
+  }
+
+  return (
+    <div className="border-t border-neutral-100 pt-5">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <div className="text-sm font-semibold text-neutral-900">Sub-cases</div>
+          <div className="text-xs text-neutral-500 mt-0.5">
+            Group multiple related use cases under this entry
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => { onToggle(); onDirty(); }}
+          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
+            hasSubCases ? 'bg-brand' : 'bg-neutral-200'
+          }`}
+          aria-label="Toggle sub-cases"
+        >
+          <span
+            className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+              hasSubCases ? 'translate-x-6' : 'translate-x-1'
+            }`}
+          />
+        </button>
+      </div>
+
+      {hasSubCases && (
+        <div className="space-y-2">
+          {subCases.map((sc, idx) => (
+            <SubCaseRow
+              key={idx}
+              sc={sc}
+              idx={idx}
+              expanded={expandedIdx === idx}
+              onToggleExpand={() => setExpandedIdx(expandedIdx === idx ? null : idx)}
+              onUpdate={(key, val) => updateSubCaseField(idx, key, val)}
+              onRemove={() => removeSubCase(idx)}
+            />
+          ))}
+
+          <button
+            type="button"
+            onClick={addSubCase}
+            className="w-full py-2.5 rounded-lg border border-dashed border-neutral-300 text-sm text-neutral-500 hover:border-brand hover:text-brand transition-colors flex items-center justify-center gap-1.5"
+          >
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            Add Sub-case
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Auth modal ────────────────────────────────────────────────────────────────
 
-function AuthModal({
-  onVerified,
-}: {
-  onVerified: (key: string) => void;
-}) {
+function AuthModal({ onVerified }: { onVerified: (key: string) => void }) {
   const [input, setInput] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -148,29 +406,16 @@ function AuthModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/70 backdrop-blur-sm">
       <div className="w-full max-w-sm mx-4 bg-white rounded-2xl shadow-2xl overflow-hidden">
-        {/* Header strip */}
         <div className="h-1.5 w-full bg-brand" />
-
         <div className="px-8 py-8">
-          {/* Lock icon */}
           <div className="w-12 h-12 rounded-2xl bg-brand/10 flex items-center justify-center mb-5">
-            <svg
-              viewBox="0 0 24 24"
-              className="h-6 w-6 text-brand"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
+            <svg viewBox="0 0 24 24" className="h-6 w-6 text-brand" fill="none" stroke="currentColor" strokeWidth="2">
               <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
               <path d="M7 11V7a5 5 0 0 1 10 0v4" />
             </svg>
           </div>
-
           <h2 className="text-xl font-bold text-neutral-900 mb-1">Admin Access</h2>
-          <p className="text-sm text-neutral-500 mb-6">
-            Enter your admin key to manage use cases.
-          </p>
-
+          <p className="text-sm text-neutral-500 mb-6">Enter your admin key to manage use cases.</p>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <Label>Admin Key</Label>
@@ -184,16 +429,9 @@ function AuthModal({
                 className={inputCls}
               />
             </div>
-
             {error && (
               <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-red-50 border border-red-200">
-                <svg
-                  viewBox="0 0 24 24"
-                  className="h-4 w-4 text-red-500 flex-shrink-0 mt-0.5"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
+                <svg viewBox="0 0 24 24" className="h-4 w-4 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" strokeWidth="2">
                   <circle cx="12" cy="12" r="10" />
                   <line x1="12" y1="8" x2="12" y2="12" />
                   <line x1="12" y1="16" x2="12.01" y2="16" />
@@ -201,7 +439,6 @@ function AuthModal({
                 <p className="text-xs text-red-700">{error}</p>
               </div>
             )}
-
             <button
               type="submit"
               disabled={loading || !input.trim()}
@@ -219,7 +456,6 @@ function AuthModal({
 // ── Main panel ────────────────────────────────────────────────────────────────
 
 export default function AdminPanel() {
-  // Key lives in memory only — cleared on every page refresh, never persisted
   const [authKey, setAuthKey] = useState<string | null>(null);
   const [usecases, setUsecases] = useState<UseCase[]>([]);
   const [loading, setLoading] = useState(false);
@@ -266,10 +502,7 @@ export default function AdminPanel() {
     setForm(prev => {
       const next = { ...prev, [key]: value };
       if (key === 'title' && selectedId === 'new' && !dirty) {
-        next.id = (value as string)
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '-')
-          .replace(/^-|-$/g, '');
+        next.id = slugify(value as string);
       }
       return next;
     });
@@ -300,10 +533,7 @@ export default function AdminPanel() {
       let next: UseCase[];
       if (selectedId === 'new') {
         if (usecases.some(u => u.id === uc.id)) {
-          setMessage({
-            type: 'error',
-            text: `ID "${uc.id}" already exists. Change the title or edit the ID.`,
-          });
+          setMessage({ type: 'error', text: `ID "${uc.id}" already exists. Change the title or edit the ID.` });
           setSaving(false);
           return;
         }
@@ -342,14 +572,12 @@ export default function AdminPanel() {
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
-  // Show blocking modal until key is verified
   if (!authKey) {
     return <AuthModal onVerified={handleVerified} />;
   }
 
   return (
     <div className="space-y-6">
-      {/* Message banner */}
       {message && (
         <div
           className={`px-4 py-3 rounded-lg text-sm font-medium ${
@@ -374,13 +602,7 @@ export default function AdminPanel() {
                 onClick={startNew}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand/90 transition-colors"
               >
-                <svg
-                  viewBox="0 0 24 24"
-                  className="h-3.5 w-3.5"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                >
+                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <line x1="12" y1="5" x2="12" y2="19" />
                   <line x1="5" y1="12" x2="19" y2="12" />
                 </svg>
@@ -403,16 +625,15 @@ export default function AdminPanel() {
                   selectedId === uc.id ? 'bg-brand/5 border-l-2 border-l-brand' : ''
                 }`}
               >
-                <div className="text-sm font-semibold text-neutral-900 leading-snug">
-                  {uc.title}
-                </div>
+                <div className="text-sm font-semibold text-neutral-900 leading-snug">{uc.title}</div>
                 <div className="flex items-center gap-2 mt-1">
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_STYLES[uc.status]}`}
-                  >
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_STYLES[uc.status]}`}>
                     {uc.status}
                   </span>
                   <span className="text-xs text-neutral-400">{uc.category}</span>
+                  {uc.subCases?.length ? (
+                    <span className="text-xs text-neutral-400">{uc.subCases.length} sub-cases</span>
+                  ) : null}
                 </div>
               </button>
             ))}
@@ -424,13 +645,7 @@ export default function AdminPanel() {
           {selectedId === null ? (
             <div className="h-64 flex items-center justify-center text-neutral-400 rounded-xl border border-dashed border-neutral-200">
               <div className="text-center">
-                <svg
-                  viewBox="0 0 24 24"
-                  className="h-10 w-10 mx-auto mb-3 opacity-30"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                >
+                <svg viewBox="0 0 24 24" className="h-10 w-10 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" strokeWidth="1.5">
                   <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
                   <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
                 </svg>
@@ -466,9 +681,7 @@ export default function AdminPanel() {
                     onChange={e => setField('category', e.target.value)}
                   >
                     {CATEGORIES.map(c => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
+                      <option key={c} value={c}>{c}</option>
                     ))}
                   </select>
                 </Field>
@@ -479,9 +692,7 @@ export default function AdminPanel() {
                     onChange={e => setField('status', e.target.value as Status)}
                   >
                     {STATUSES.map(s => (
-                      <option key={s.value} value={s.value}>
-                        {s.label}
-                      </option>
+                      <option key={s.value} value={s.value}>{s.label}</option>
                     ))}
                   </select>
                 </Field>
@@ -563,6 +774,15 @@ export default function AdminPanel() {
                   />
                 </Field>
               </div>
+
+              {/* Sub-cases section */}
+              <SubCasesSection
+                hasSubCases={form.hasSubCases}
+                subCases={form.subCases}
+                onToggle={() => setForm(prev => ({ ...prev, hasSubCases: !prev.hasSubCases }))}
+                onChange={next => setForm(prev => ({ ...prev, subCases: next }))}
+                onDirty={() => setDirty(true)}
+              />
 
               <div className="flex items-center justify-between pt-2 border-t border-neutral-100">
                 <div>

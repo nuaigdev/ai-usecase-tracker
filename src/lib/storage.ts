@@ -25,7 +25,13 @@ export async function readUseCases(): Promise<UseCase[]> {
       cache: 'no-store',
     });
     if (!res.ok) return seedData;
-    return (await res.json()) as UseCase[];
+    const blobData = (await res.json()) as UseCase[];
+    // Restore subCases from seed when a previous save stripped them
+    const seedMap = new Map(seedData.map(u => [u.id, u]));
+    return blobData.map(u => (!u.subCases && seedMap.get(u.id)?.subCases)
+      ? { ...u, subCases: seedMap.get(u.id)!.subCases }
+      : u
+    );
   } catch (e) {
     console.error('[storage] Blob read error:', e);
     return seedData;
