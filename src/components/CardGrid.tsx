@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import type { UseCase, SubCase } from '../data/usecases';
+import type { UseCase, SubCase } from '../types';
 
 const CATEGORY_COLORS: Record<string, string> = {
   'Resident Care':        'bg-rose-100 text-rose-700',

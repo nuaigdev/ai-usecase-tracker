@@ -1,10 +1,11 @@
 export const prerender = false;
 
 import type { APIRoute } from 'astro';
-import { readUseCases, writeUseCases } from '../../lib/storage';
+import { readData, writeData } from '../../lib/storage';
+import type { TrackerData } from '../../types';
 
 export const GET: APIRoute = async () => {
-  const data = await readUseCases();
+  const data = await readData();
   return new Response(JSON.stringify(data), {
     headers: { 'Content-Type': 'application/json' },
   });
@@ -28,11 +29,11 @@ export const POST: APIRoute = async ({ request }) => {
     return new Response('Invalid JSON', { status: 400 });
   }
 
-  if (!Array.isArray(body)) {
-    return new Response('Expected an array', { status: 400 });
+  if (!body || typeof body !== 'object' || !Array.isArray((body as any).trackers)) {
+    return new Response('Expected { trackers: [] }', { status: 400 });
   }
 
-  await writeUseCases(body as any);
+  await writeData(body as TrackerData);
   return new Response(JSON.stringify({ ok: true }), {
     headers: { 'Content-Type': 'application/json' },
   });

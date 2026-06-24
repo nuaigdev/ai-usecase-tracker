@@ -4,14 +4,16 @@ export const prerender = false;
 import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
 import CardGrid from '../components/CardGrid';
-import { readUseCases } from '../lib/storage';
+import { readData } from '../lib/storage';
 
-const usecases = await readUseCases();
+const data = await readData();
+const trackerId = Astro.url.searchParams.get('tracker') ?? data.trackers[0]?.id ?? '';
+const tracker = data.trackers.find(t => t.id === trackerId) ?? data.trackers[0];
+const usecases = tracker?.usecases ?? [];
 ---
-<Layout title="AI Use Cases — NuAig">
+<Layout title="Tracker — NuAig">
   <Header />
   <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-    <!-- Interactive card grid (React island) -->
     <CardGrid usecases={usecases} client:load />
   </main>
 </Layout>

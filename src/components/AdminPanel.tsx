@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import type { UseCase, SubCase } from '../data/usecases';
+import type { UseCase, SubCase, TrackerData } from '../types';
 
 const CATEGORIES = [
   'Resident Care',
@@ -442,7 +442,7 @@ function AuthModal({ onVerified }: { onVerified: (key: string) => void }) {
 
 export default function AdminPanel() {
   const [authKey, setAuthKey] = useState<string | null>(null);
-  const [usecases, setUsecases] = useState<UseCase[]>([]);
+  const [trackerData, setTrackerData] = useState<TrackerData>({ trackers: [] });
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
@@ -450,6 +450,9 @@ export default function AdminPanel() {
   const [selectedId, setSelectedId] = useState<string | 'new' | null>(null);
   const [form, setForm] = useState<FormState>(blankForm());
   const [dirty, setDirty] = useState(false);
+
+  // Flat list of all use cases across all trackers (for sidebar display)
+  const usecases = trackerData.trackers.flatMap(t => t.usecases);
 
   function handleVerified(key: string) {
     setAuthKey(key);
@@ -459,10 +462,10 @@ export default function AdminPanel() {
   async function loadUseCases() {
     setLoading(true);
     try {
-      const data: UseCase[] = await fetch('/api/usecases').then(r => r.json());
-      setUsecases(data);
+      const data: TrackerData = await fetch('/api/usecases').then(r => r.json());
+      setTrackerData(data);
     } catch {
-      setMessage({ type: 'error', text: 'Failed to load use cases.' });
+      setMessage({ type: 'error', text: 'Failed to load data.' });
     }
     setLoading(false);
   }
@@ -494,20 +497,37 @@ export default function AdminPanel() {
     setDirty(true);
   }
 
-  async function persist(list: UseCase[]) {
+  async function persist(data: TrackerData) {
     const res = await fetch('/api/usecases', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${authKey}`,
       },
-      body: JSON.stringify(list),
+      body: JSON.stringify(data),
     });
     if (!res.ok) {
       const txt = await res.text();
       throw new Error(txt === 'Unauthorized' ? 'Wrong admin key.' : txt);
     }
-    return list;
+  }
+
+  function applyUseCase(td: TrackerData, uc: UseCase, isNew: boolean): TrackerData {
+    if (isNew) {
+      // Add to first tracker (tracker assignment handled in commit 5)
+      const firstId = td.trackers[0]?.id;
+      return {
+        trackers: td.trackers.map(t =>
+          t.id === firstId ? { ...t, usecases: [...t.usecases, uc] } : t
+        ),
+      };
+    }
+    return {
+      trackers: td.trackers.map(t => ({
+        ...t,
+        usecases: t.usecases.map(u => (u.id === selectedId ? uc : u)),
+      })),
+    };
   }
 
   async function handleSave() {
@@ -515,19 +535,14 @@ export default function AdminPanel() {
     setMessage(null);
     try {
       const uc = fromForm(form);
-      let next: UseCase[];
-      if (selectedId === 'new') {
-        if (usecases.some(u => u.id === uc.id)) {
-          setMessage({ type: 'error', text: `ID "${uc.id}" already exists. Change the title or edit the ID.` });
-          setSaving(false);
-          return;
-        }
-        next = [...usecases, uc];
-      } else {
-        next = usecases.map(u => (u.id === selectedId ? uc : u));
+      if (selectedId === 'new' && usecases.some(u => u.id === uc.id)) {
+        setMessage({ type: 'error', text: `ID "${uc.id}" already exists. Change the title or edit the ID.` });
+        setSaving(false);
+        return;
       }
+      const next = applyUseCase(trackerData, uc, selectedId === 'new');
       await persist(next);
-      setUsecases(next);
+      setTrackerData(next);
       setSelectedId(uc.id);
       setDirty(false);
       setMessage({ type: 'ok', text: 'Saved! Changes are live immediately.' });
@@ -543,9 +558,14 @@ export default function AdminPanel() {
     setSaving(true);
     setMessage(null);
     try {
-      const next = usecases.filter(u => u.id !== selectedId);
+      const next: TrackerData = {
+        trackers: trackerData.trackers.map(t => ({
+          ...t,
+          usecases: t.usecases.filter(u => u.id !== selectedId),
+        })),
+      };
       await persist(next);
-      setUsecases(next);
+      setTrackerData(next);
       setSelectedId(null);
       setDirty(false);
       setMessage({ type: 'ok', text: 'Deleted successfully.' });

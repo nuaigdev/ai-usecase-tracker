@@ -3,10 +3,13 @@ export const prerender = false;
 
 import Layout from '../layouts/Layout.astro';
 import PresentMode from '../components/PresentMode';
-import { readUseCases } from '../lib/storage';
+import { readData } from '../lib/storage';
 
-const usecases = await readUseCases();
+const data = await readData();
+const trackerId = Astro.url.searchParams.get('tracker') ?? data.trackers[0]?.id ?? '';
+const tracker = data.trackers.find(t => t.id === trackerId) ?? data.trackers[0];
+const usecases = tracker?.usecases ?? [];
 ---
-<Layout title="Present — NuAig AI Solutions" present={true}>
-  <PresentMode usecases={usecases} client:only="react" />
+<Layout title={`${tracker?.title ?? 'Present'} — NuAig`} present={true}>
+  <PresentMode usecases={usecases} trackerId={trackerId} client:only="react" />
 </Layout>

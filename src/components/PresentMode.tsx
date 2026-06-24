@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { UseCase } from '../data/usecases';
+import type { UseCase } from '../types';
 
 // ─── Brand / style constants ──────────────────────────────────────────────────
 
@@ -318,7 +318,7 @@ function UseCaseSlide({
 type SlideType = 'title' | 'usecase' | 'closing';
 interface Slide { type: SlideType; usecase?: UseCase; ucIndex?: number; }
 
-export default function PresentMode({ usecases }: { usecases: UseCase[] }) {
+export default function PresentMode({ usecases, trackerId }: { usecases: UseCase[]; trackerId?: string }) {
   const slides: Slide[] = [
     { type: 'title' },
     ...usecases.map((uc, i) => ({ type: 'usecase' as SlideType, usecase: uc, ucIndex: i + 1 })),
@@ -352,7 +352,7 @@ export default function PresentMode({ usecases }: { usecases: UseCase[] }) {
       switch (e.key) {
         case 'ArrowRight': case ' ': e.preventDefault(); next(); break;
         case 'ArrowLeft':            e.preventDefault(); prev(); break;
-        case 'Escape':               window.location.href = '/'; break;
+        case 'Escape':               window.location.href = trackerId ? `/?tracker=${trackerId}` : '/'; break;
       }
     }
     window.addEventListener('keydown', onKey);
@@ -421,7 +421,7 @@ export default function PresentMode({ usecases }: { usecases: UseCase[] }) {
               </span>
             )}
             <button
-              onClick={() => (window.location.href = '/')}
+              onClick={() => (window.location.href = trackerId ? `/?tracker=${trackerId}` : '/')}
               className="flex items-center gap-1.5 text-xs text-white/35 hover:text-white/70 transition-colors px-3 py-1.5 rounded-lg"
               style={{ border: '1px solid rgba(255,255,255,0.08)' }}
             >
