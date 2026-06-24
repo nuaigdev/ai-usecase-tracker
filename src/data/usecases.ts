@@ -1,5 +1,3 @@
-export type Status = "planned" | "in-progress" | "live";
-
 export interface SubCase {
   id: string;
   title: string;
@@ -13,7 +11,6 @@ export interface UseCase {
   id: string;
   title: string;
   category: string;
-  status: Status;
   summary: string;
   description: string;
   businessValue: string[];
@@ -30,7 +27,7 @@ export const usecases: UseCase[] = [
     id: "contract-management",
     title: "Contract Management Agent",
     category: "Operations & Admin",
-    status: "in-progress",
+
     summary:
       "Automatically extracts, centralises, and monitors contracts — flagging expiry dates, compliance gaps, and anomalies before they become problems.",
     description:
@@ -56,7 +53,7 @@ export const usecases: UseCase[] = [
     id: "root-cause-analysis",
     title: "Root Cause Analysis Agent",
     category: "Resident Care",
-    status: "in-progress",
+
     summary:
       "Correlates data across EMR, staffing, and medication systems to generate structured incident reports with root-cause hypotheses and prevention strategies.",
     description:
@@ -82,7 +79,7 @@ export const usecases: UseCase[] = [
     id: "prior-authorization",
     title: "Prior Authorization AI Agent",
     category: "Resident Care",
-    status: "planned",
+
     summary:
       "AI agent automates Medicare Part B prior authorization — validating ICD-10 codes, verifying provider NPIs, and cross-referencing live CMS national and local coverage policies before submission.",
     description:
@@ -117,7 +114,7 @@ export const usecases: UseCase[] = [
     id: "voice-ai-suite",
     title: "Voice AI Suite",
     category: "Resident Care",
-    status: "planned",
+
     summary:
       "Seven intelligent voice agents across resident care, caregiver wellbeing, and family communication — replacing manual workflows with natural language AI calls.",
     description:
@@ -243,7 +240,7 @@ export const usecases: UseCase[] = [
     id: "concierge-agent",
     title: "Concierge Agent (MS Teams Copilot)",
     category: "Staff & Workforce",
-    status: "in-progress",
+
     summary:
       "A knowledge assistant embedded in MS Teams that lets concierge staff query protocols, retrieve SOPs, exchange handover notes, and escalate alerts — without leaving their existing workflow.",
     description:
@@ -269,7 +266,7 @@ export const usecases: UseCase[] = [
     id: "newsletter-generator",
     title: "AI-Powered Newsletter Generator",
     category: "Operations & Admin",
-    status: "live",
+
     summary:
       "Five-stage pipeline: domain crawl → AI filtering → LLM summarisation → branded HTML newsletter → automated email delivery. Zero manual research required.",
     description:
@@ -295,7 +292,7 @@ export const usecases: UseCase[] = [
     id: "prs-financial-review",
     title: "PRS Financial Review",
     category: "Sales & Admissions",
-    status: "live",
+
     summary:
       "AI-powered year-by-year financial modelling qualifies senior living prospects with actuarial-grade projections, survivability scenarios, and instant YES/CAUTION/NO decisions.",
     description:
@@ -328,7 +325,7 @@ export const usecases: UseCase[] = [
     id: "holleran-survey-automation",
     title: "Holleran Survey Automation",
     category: "Quality & Compliance",
-    status: "in-progress",
+
     summary:
       "Vision AI digitises handwritten Holleran paper surveys automatically, then NLP extracts themes and sentiment — turning weeks of manual entry into hours of actionable insight.",
     description:

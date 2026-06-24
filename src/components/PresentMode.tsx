@@ -16,12 +16,6 @@ const CAT_COLORS: Record<string, { bg: string; text: string; border: string }> =
   'Quality & Compliance': { bg: 'rgba(74,222,128,0.15)',  text: '#86efac', border: 'rgba(74,222,128,0.4)'  },
 };
 
-const STATUS_COLORS = {
-  planned:       { text: '#94a3b8', bg: 'rgba(148,163,184,0.15)', dot: '#94a3b8', label: 'Planned'     },
-  'in-progress': { text: '#fbbf24', bg: 'rgba(251,191,36,0.15)',  dot: '#fbbf24', label: 'In Progress' },
-  live:          { text: '#34d399', bg: 'rgba(52,211,153,0.15)',  dot: '#34d399', label: 'Live'        },
-};
-
 function catColor(cat: string) {
   return CAT_COLORS[cat] ?? { bg: 'rgba(148,163,184,0.15)', text: '#94a3b8', border: 'rgba(148,163,184,0.4)' };
 }
@@ -160,7 +154,6 @@ function UseCaseSlide({
   direction: 'forward' | 'backward';
 }) {
   const cc = catColor(uc.category);
-  const sc = STATUS_COLORS[uc.status];
   const numStr = String(ucIndex).padStart(2, '0');
   const hasSubCases = !!uc.subCases?.length;
 
@@ -204,13 +197,6 @@ function UseCaseSlide({
               style={{ background: cc.bg, color: cc.text, border: `1px solid ${cc.border}` }}
             >
               {uc.category}
-            </span>
-            <span
-              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold"
-              style={{ background: sc.bg, color: sc.text }}
-            >
-              <span className="w-1.5 h-1.5 rounded-full" style={{ background: sc.dot }} />
-              {sc.label}
             </span>
           </div>
 

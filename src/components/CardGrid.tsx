@@ -1,12 +1,6 @@
 import { useState, useMemo } from 'react';
 import type { UseCase, SubCase } from '../data/usecases';
 
-const STATUS_CONFIG = {
-  planned:       { label: 'Planned',     bg: 'bg-slate-100',   text: 'text-slate-600',  dot: 'bg-slate-400'   },
-  'in-progress': { label: 'In Progress', bg: 'bg-amber-50',    text: 'text-amber-700',  dot: 'bg-amber-400'   },
-  live:          { label: 'Live',        bg: 'bg-emerald-50',  text: 'text-emerald-700',dot: 'bg-emerald-500' },
-};
-
 const CATEGORY_COLORS: Record<string, string> = {
   'Resident Care':        'bg-rose-100 text-rose-700',
   'Operations & Admin':   'bg-violet-100 text-violet-700',
@@ -26,7 +20,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   return <h4 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">{children}</h4>;
 }
 
-// ── Value / tech section used by both overview and sub-case views ─────────────
+// ── Value / tech section ──────────────────────────────────────────────────────
 
 function ValueList({ items }: { items: string[] }) {
   return (
@@ -57,7 +51,7 @@ function TechTags({ items }: { items: string[] }) {
   );
 }
 
-// ── Compliance box (dashboard only) ──────────────────────────────────────────
+// ── Compliance box ────────────────────────────────────────────────────────────
 
 function ComplianceBox({ uc }: { uc: UseCase }) {
   return (
@@ -120,9 +114,7 @@ function ExpandedBody({ uc }: { uc: UseCase }) {
   return (
     <div className="border-t border-neutral-100 px-6 pb-6 pt-5">
       {hasSubCases ? (
-        /* ── Sub-case tab layout ── */
         <div>
-          {/* Tab bar */}
           <div className="flex flex-wrap gap-1.5 mb-5">
             <button
               onClick={() => setActiveTab('overview')}
@@ -150,7 +142,6 @@ function ExpandedBody({ uc }: { uc: UseCase }) {
           </div>
 
           {activeTab === 'overview' ? (
-            /* Overview tab */
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               <div className="lg:col-span-2 space-y-6">
                 <p className="text-sm text-neutral-700 leading-relaxed">{uc.description}</p>
@@ -174,7 +165,6 @@ function ExpandedBody({ uc }: { uc: UseCase }) {
               </div>
             </div>
           ) : (
-            /* Sub-case tab */
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               <div className="lg:col-span-2">
                 <h4 className="text-base font-semibold text-neutral-900 mb-1">
@@ -190,7 +180,6 @@ function ExpandedBody({ uc }: { uc: UseCase }) {
           )}
         </div>
       ) : (
-        /* ── Standard two-column layout ── */
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">
             <p className="text-sm text-neutral-700 leading-relaxed">{uc.description}</p>
@@ -221,7 +210,6 @@ function ExpandedBody({ uc }: { uc: UseCase }) {
 // ── Card ──────────────────────────────────────────────────────────────────────
 
 function Card({ uc, expanded, onToggle }: { uc: UseCase; expanded: boolean; onToggle: () => void }) {
-  const st = STATUS_CONFIG[uc.status];
   const cc = categoryColor(uc.category);
 
   return (
@@ -242,15 +230,11 @@ function Card({ uc, expanded, onToggle }: { uc: UseCase; expanded: boolean; onTo
               <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${cc}`}>
                 {uc.category}
               </span>
-              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${st.bg} ${st.text}`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />
-                {st.label}
-              </span>
-              {uc.subCases?.length && (
+              {uc.subCases?.length ? (
                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-neutral-100 text-neutral-500">
                   {uc.subCases.length} sub-cases
                 </span>
-              )}
+              ) : null}
             </div>
             <h3 className="text-lg font-semibold text-neutral-900 mb-2 leading-snug">{uc.title}</h3>
             <p className="text-sm text-neutral-500 leading-relaxed">{uc.summary}</p>
@@ -278,7 +262,6 @@ export default function CardGrid({ usecases }: { usecases: UseCase[] }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filterCat, setFilterCat] = useState('All');
-  const [filterStatus, setFilterStatus] = useState('All');
 
   const categories = useMemo(
     () => ['All', ...Array.from(new Set(usecases.map(u => u.category)))],
@@ -295,13 +278,9 @@ export default function CardGrid({ usecases }: { usecases: UseCase[] }) {
           u.summary.toLowerCase().includes(q) ||
           u.category.toLowerCase().includes(q) ||
           u.subCases?.some(sc => sc.title.toLowerCase().includes(q));
-        return (
-          matchSearch &&
-          (filterCat === 'All' || u.category === filterCat) &&
-          (filterStatus === 'All' || u.status === filterStatus)
-        );
+        return matchSearch && (filterCat === 'All' || u.category === filterCat);
       }),
-    [usecases, search, filterCat, filterStatus],
+    [usecases, search, filterCat],
   );
 
   return (
@@ -335,16 +314,6 @@ export default function CardGrid({ usecases }: { usecases: UseCase[] }) {
           {categories.map(c => (
             <option key={c} value={c}>{c === 'All' ? 'All Categories' : c}</option>
           ))}
-        </select>
-        <select
-          value={filterStatus}
-          onChange={e => setFilterStatus(e.target.value)}
-          className="px-4 py-2.5 rounded-xl border border-neutral-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-brand text-neutral-700 cursor-pointer"
-        >
-          <option value="All">All Statuses</option>
-          <option value="live">Live</option>
-          <option value="in-progress">In Progress</option>
-          <option value="planned">Planned</option>
         </select>
       </div>
 

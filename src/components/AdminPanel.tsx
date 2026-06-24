@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import type { UseCase, SubCase, Status } from '../data/usecases';
+import type { UseCase, SubCase } from '../data/usecases';
 
 const CATEGORIES = [
   'Resident Care',
@@ -9,18 +9,6 @@ const CATEGORIES = [
   'Quality & Compliance',
   'Family & Community',
 ];
-
-const STATUSES: { value: Status; label: string }[] = [
-  { value: 'planned', label: 'Planned' },
-  { value: 'in-progress', label: 'In Progress' },
-  { value: 'live', label: 'Live' },
-];
-
-const STATUS_STYLES: Record<Status, string> = {
-  planned: 'bg-slate-100 text-slate-600',
-  'in-progress': 'bg-amber-50 text-amber-700',
-  live: 'bg-emerald-50 text-emerald-700',
-};
 
 // ── Form helpers ──────────────────────────────────────────────────────────────
 
@@ -37,7 +25,6 @@ interface FormState {
   id: string;
   title: string;
   category: string;
-  status: Status;
   summary: string;
   description: string;
   businessValue: string;
@@ -82,7 +69,6 @@ function toForm(uc: Partial<UseCase>): FormState {
     id: uc.id ?? '',
     title: uc.title ?? '',
     category: uc.category ?? 'Resident Care',
-    status: uc.status ?? 'planned',
     summary: uc.summary ?? '',
     description: uc.description ?? '',
     businessValue: (uc.businessValue ?? []).join('\n'),
@@ -101,7 +87,6 @@ function fromForm(f: FormState): UseCase {
     id: f.id || slugify(f.title),
     title: f.title,
     category: f.category,
-    status: f.status,
     summary: f.summary,
     description: f.description,
     businessValue: splitLines(f.businessValue),
@@ -627,9 +612,6 @@ export default function AdminPanel() {
               >
                 <div className="text-sm font-semibold text-neutral-900 leading-snug">{uc.title}</div>
                 <div className="flex items-center gap-2 mt-1">
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_STYLES[uc.status]}`}>
-                    {uc.status}
-                  </span>
                   <span className="text-xs text-neutral-400">{uc.category}</span>
                   {uc.subCases?.length ? (
                     <span className="text-xs text-neutral-400">{uc.subCases.length} sub-cases</span>
@@ -673,30 +655,17 @@ export default function AdminPanel() {
                 </Field>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Category">
-                  <select
-                    className={inputCls}
-                    value={form.category}
-                    onChange={e => setField('category', e.target.value)}
-                  >
-                    {CATEGORIES.map(c => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Status">
-                  <select
-                    className={inputCls}
-                    value={form.status}
-                    onChange={e => setField('status', e.target.value as Status)}
-                  >
-                    {STATUSES.map(s => (
-                      <option key={s.value} value={s.value}>{s.label}</option>
-                    ))}
-                  </select>
-                </Field>
-              </div>
+              <Field label="Category">
+                <select
+                  className={inputCls}
+                  value={form.category}
+                  onChange={e => setField('category', e.target.value)}
+                >
+                  {CATEGORIES.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </Field>
 
               <Field label="Summary (shown on card)">
                 <textarea
