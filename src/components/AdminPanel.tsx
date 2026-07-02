@@ -528,6 +528,7 @@ export default function AdminPanel() {
   const [selectedId, setSelectedId] = useState<string | 'new' | null>(null);
   const [form, setForm] = useState<FormState>(blankForm(''));
   const [dirty, setDirty] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   const usecases = trackerData.trackers.flatMap(t => t.usecases);
   const defaultTrackerId = trackerData.trackers[0]?.id ?? '';
@@ -564,6 +565,30 @@ export default function AdminPanel() {
     setDirty(false);
     setMessage(null);
   }
+
+  function closeForm() {
+    if (dirty && !confirm('You have unsaved changes. Discard them?')) return;
+    setSelectedId(null);
+    setDirty(false);
+    setMessage(null);
+  }
+
+  // Track viewport so the edit form renders inline (desktop) or as a modal (mobile)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 1023px)');
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+
+  // Lock body scroll while the mobile edit modal is open
+  useEffect(() => {
+    if (!isMobile || selectedId === null) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [isMobile, selectedId]);
 
   function setField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm(prev => {
@@ -682,6 +707,96 @@ export default function AdminPanel() {
         : 'text-neutral-600 hover:bg-neutral-100'
     }`;
 
+  const editCard = (
+    <div className="bg-white rounded-xl border border-neutral-200 p-4 sm:p-6 space-y-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Field label="Title">
+          <input className={inputCls} value={form.title} onChange={e => setField('title', e.target.value)} placeholder="e.g. Fall Detection AI" />
+        </Field>
+        <Field label="ID (auto-generated)">
+          <input className={inputCls} value={form.id} onChange={e => setField('id', e.target.value)} placeholder="fall-detection-ai" />
+        </Field>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Field label="Tracker">
+          <select className={inputCls} value={form.trackerId} onChange={e => setField('trackerId', e.target.value)}>
+            {trackerData.trackers.map(t => (
+              <option key={t.id} value={t.id}>{t.title}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Category">
+          <select className={inputCls} value={form.category} onChange={e => setField('category', e.target.value)}>
+            {CATEGORIES.map(c => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        </Field>
+      </div>
+
+      <Field label="Summary (shown on card)">
+        <textarea className={textareaCls} style={{ minHeight: 60 }} value={form.summary} onChange={e => setField('summary', e.target.value)} placeholder="Short sentence shown on the card…" />
+      </Field>
+
+      <Field label="Description (shown when expanded)">
+        <textarea className={textareaCls} style={{ minHeight: 120 }} value={form.description} onChange={e => setField('description', e.target.value)} placeholder="Full explanation of the use case…" />
+      </Field>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Field label="Business Value (one per line)">
+          <textarea className={textareaCls} value={form.businessValue} onChange={e => setField('businessValue', e.target.value)} placeholder={'Reduce admin overhead\nFaster care decisions'} />
+        </Field>
+        <Field label="Tech Stack (one per line)">
+          <textarea className={textareaCls} value={form.techStack} onChange={e => setField('techStack', e.target.value)} placeholder={'Claude AI\nEMR Integration'} />
+        </Field>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Field label="Limitations (one per line)">
+          <textarea className={textareaCls} value={form.limitations} onChange={e => setField('limitations', e.target.value)} placeholder={'Requires EMR integration\nNeeds clinical review'} />
+        </Field>
+        <Field label="Compliance Flags (one per line)">
+          <textarea className={textareaCls} value={form.complianceFlags} onChange={e => setField('complianceFlags', e.target.value)} placeholder={'HIPAA\nPHI Handling'} />
+        </Field>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Field label="Owner">
+          <input className={inputCls} value={form.owner} onChange={e => setField('owner', e.target.value)} placeholder="NuAig" />
+        </Field>
+        <Field label="Last Updated">
+          <input type="date" className={inputCls} value={form.lastUpdated} onChange={e => setField('lastUpdated', e.target.value)} />
+        </Field>
+      </div>
+
+      <SubCasesSection
+        hasSubCases={form.hasSubCases}
+        subCases={form.subCases}
+        onToggle={() => setForm(prev => ({ ...prev, hasSubCases: !prev.hasSubCases }))}
+        onChange={next => setForm(prev => ({ ...prev, subCases: next }))}
+        onDirty={() => setDirty(true)}
+      />
+
+      <div className="flex items-center justify-between pt-2 border-t border-neutral-100">
+        <div>
+          {selectedId !== 'new' && (
+            <button onClick={handleDelete} disabled={saving} className="px-4 py-2 rounded-lg border border-red-200 text-red-600 text-sm font-semibold hover:bg-red-50 transition-colors disabled:opacity-50">
+              Delete
+            </button>
+          )}
+        </div>
+        <button
+          onClick={handleSave}
+          disabled={saving || !dirty}
+          className="px-6 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {saving ? 'Saving…' : selectedId === 'new' ? 'Create Use Case' : 'Save Changes'}
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="space-y-6">
       {/* Tab bar */}
@@ -765,95 +880,38 @@ export default function AdminPanel() {
                   <p className="text-sm">Select a use case to edit, or click Add New</p>
                 </div>
               </div>
-            ) : (
-              <div className="bg-white rounded-xl border border-neutral-200 p-4 sm:p-6 space-y-5">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Field label="Title">
-                    <input className={inputCls} value={form.title} onChange={e => setField('title', e.target.value)} placeholder="e.g. Fall Detection AI" />
-                  </Field>
-                  <Field label="ID (auto-generated)">
-                    <input className={inputCls} value={form.id} onChange={e => setField('id', e.target.value)} placeholder="fall-detection-ai" />
-                  </Field>
+            ) : isMobile ? null : editCard}
+          </div>
+        </div>
+      )}
+
+      {/* Mobile: edit form in a bottom-sheet modal instead of a long scroll */}
+      {activeTab === 'usecases' && isMobile && selectedId !== null && (
+        <div className="fixed inset-0 z-50 flex flex-col">
+          <div className="absolute inset-0 bg-neutral-950/50 backdrop-blur-sm" onClick={closeForm} />
+          <div className="relative mt-auto w-full max-h-[92vh] flex flex-col bg-neutral-50 rounded-t-2xl shadow-2xl">
+            <div className="flex-shrink-0 flex items-center justify-between px-4 h-14 bg-white border-b border-neutral-100 rounded-t-2xl">
+              <span className="text-sm font-semibold text-neutral-900">
+                {selectedId === 'new' ? 'New Use Case' : 'Edit Use Case'}
+              </span>
+              <button
+                onClick={closeForm}
+                aria-label="Close"
+                className="inline-flex items-center justify-center h-9 w-9 rounded-lg text-neutral-500 hover:bg-neutral-100 transition-colors"
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+            <div className="overflow-y-auto p-4">
+              {message && (
+                <div className={`px-4 py-3 rounded-lg text-sm font-medium mb-4 ${message.type === 'ok' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                  {message.text}
                 </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Field label="Tracker">
-                    <select className={inputCls} value={form.trackerId} onChange={e => setField('trackerId', e.target.value)}>
-                      {trackerData.trackers.map(t => (
-                        <option key={t.id} value={t.id}>{t.title}</option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="Category">
-                    <select className={inputCls} value={form.category} onChange={e => setField('category', e.target.value)}>
-                      {CATEGORIES.map(c => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
-                  </Field>
-                </div>
-
-                <Field label="Summary (shown on card)">
-                  <textarea className={textareaCls} style={{ minHeight: 60 }} value={form.summary} onChange={e => setField('summary', e.target.value)} placeholder="Short sentence shown on the card…" />
-                </Field>
-
-                <Field label="Description (shown when expanded)">
-                  <textarea className={textareaCls} style={{ minHeight: 120 }} value={form.description} onChange={e => setField('description', e.target.value)} placeholder="Full explanation of the use case…" />
-                </Field>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Field label="Business Value (one per line)">
-                    <textarea className={textareaCls} value={form.businessValue} onChange={e => setField('businessValue', e.target.value)} placeholder={'Reduce admin overhead\nFaster care decisions'} />
-                  </Field>
-                  <Field label="Tech Stack (one per line)">
-                    <textarea className={textareaCls} value={form.techStack} onChange={e => setField('techStack', e.target.value)} placeholder={'Claude AI\nEMR Integration'} />
-                  </Field>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Field label="Limitations (one per line)">
-                    <textarea className={textareaCls} value={form.limitations} onChange={e => setField('limitations', e.target.value)} placeholder={'Requires EMR integration\nNeeds clinical review'} />
-                  </Field>
-                  <Field label="Compliance Flags (one per line)">
-                    <textarea className={textareaCls} value={form.complianceFlags} onChange={e => setField('complianceFlags', e.target.value)} placeholder={'HIPAA\nPHI Handling'} />
-                  </Field>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Field label="Owner">
-                    <input className={inputCls} value={form.owner} onChange={e => setField('owner', e.target.value)} placeholder="NuAig" />
-                  </Field>
-                  <Field label="Last Updated">
-                    <input type="date" className={inputCls} value={form.lastUpdated} onChange={e => setField('lastUpdated', e.target.value)} />
-                  </Field>
-                </div>
-
-                <SubCasesSection
-                  hasSubCases={form.hasSubCases}
-                  subCases={form.subCases}
-                  onToggle={() => setForm(prev => ({ ...prev, hasSubCases: !prev.hasSubCases }))}
-                  onChange={next => setForm(prev => ({ ...prev, subCases: next }))}
-                  onDirty={() => setDirty(true)}
-                />
-
-                <div className="flex items-center justify-between pt-2 border-t border-neutral-100">
-                  <div>
-                    {selectedId !== 'new' && (
-                      <button onClick={handleDelete} disabled={saving} className="px-4 py-2 rounded-lg border border-red-200 text-red-600 text-sm font-semibold hover:bg-red-50 transition-colors disabled:opacity-50">
-                        Delete
-                      </button>
-                    )}
-                  </div>
-                  <button
-                    onClick={handleSave}
-                    disabled={saving || !dirty}
-                    className="px-6 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    {saving ? 'Saving…' : selectedId === 'new' ? 'Create Use Case' : 'Save Changes'}
-                  </button>
-                </div>
-              </div>
-            )}
+              )}
+              {editCard}
+            </div>
           </div>
         </div>
       )}
