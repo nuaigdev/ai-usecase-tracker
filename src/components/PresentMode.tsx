@@ -64,11 +64,11 @@ function TitleSlide() {
       style={{ animation: 'pmFadeIn 0.7s ease-out forwards' }}
     >
       <div style={{ animation: 'pmSlideUp 0.6s 0.1s ease-out both' }}>
-        <img src="/logo-white.svg" alt="NuAig" className="h-14 w-auto mx-auto mb-10" />
+        <img src="/logo-white.svg" alt="NuAig" className="h-10 sm:h-14 w-auto mx-auto mb-6 sm:mb-10" />
       </div>
 
       <div
-        className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full mb-6 text-xs font-semibold tracking-widest uppercase"
+        className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full mb-5 sm:mb-6 text-xs font-semibold tracking-widest uppercase"
         style={{
           background: 'rgba(6,155,223,0.15)',
           color: BRAND,
@@ -81,18 +81,18 @@ function TitleSlide() {
       </div>
 
       <h1
-        className="text-5xl sm:text-6xl font-extrabold text-white leading-tight mb-6 tracking-tight"
+        className="text-3xl sm:text-5xl md:text-6xl font-extrabold text-white leading-tight mb-5 sm:mb-6 tracking-tight"
         style={{ animation: 'pmSlideUp 0.6s 0.3s ease-out both' }}
       >
         AI-Powered Solutions<br />
         <span style={{ color: BRAND }}>for Senior Living</span>
       </h1>
 
-      <p className="text-lg text-white/50 mb-12 font-light tracking-wide" style={{ animation: 'pmSlideUp 0.6s 0.4s ease-out both' }}>
+      <p className="text-base sm:text-lg text-white/50 mb-8 sm:mb-12 font-light tracking-wide" style={{ animation: 'pmSlideUp 0.6s 0.4s ease-out both' }}>
         Intelligent Agents · Reducing Caregiver Burnout Through Automation
       </p>
 
-      <div className="text-sm text-white/30 mb-16" style={{ animation: 'pmSlideUp 0.6s 0.5s ease-out both' }}>
+      <div className="text-sm text-white/30 mb-10 sm:mb-16" style={{ animation: 'pmSlideUp 0.6s 0.5s ease-out both' }}>
         {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
       </div>
 
@@ -116,11 +116,11 @@ function ClosingSlide() {
       style={{ animation: 'pmFadeIn 0.7s ease-out forwards' }}
     >
       <div style={{ animation: 'pmSlideUp 0.6s 0.1s ease-out both' }}>
-        <img src="/logo-white.svg" alt="NuAig" className="h-12 w-auto mx-auto mb-12" />
+        <img src="/logo-white.svg" alt="NuAig" className="h-10 sm:h-12 w-auto mx-auto mb-8 sm:mb-12" />
       </div>
 
       <h2
-        className="text-6xl sm:text-7xl font-extrabold text-white mb-6 tracking-tight"
+        className="text-4xl sm:text-6xl md:text-7xl font-extrabold text-white mb-6 tracking-tight"
         style={{ animation: 'pmSlideUp 0.6s 0.2s ease-out both' }}
       >
         Thank You
@@ -158,9 +158,10 @@ function UseCaseSlide({
   const hasSubCases = !!uc.subCases?.length;
 
   return (
-    // flex-1 min-h-0 — fills the outer flex-col container exactly, no overflow
+    // lg: flex-1 min-h-0 fills the outer container exactly, no overflow.
+    // Mobile: content flows and the outer area scrolls.
     <div
-      className="flex-1 min-h-0 flex flex-col relative overflow-hidden"
+      className="flex-1 min-h-0 flex flex-col relative overflow-x-hidden lg:overflow-hidden"
       style={{
         animation: `${direction === 'forward' ? 'pmFadeInRight' : 'pmFadeInLeft'} 0.45s cubic-bezier(0.16,1,0.3,1) forwards`,
       }}
@@ -181,11 +182,11 @@ function UseCaseSlide({
 
       {/* ── Two-column body ── */}
       {/* flex-1 min-h-0 ensures this never pushes past the outer boundary */}
-      <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden pl-6 pt-3">
+      <div className="flex-1 flex flex-col lg:flex-row lg:min-h-0 lg:overflow-hidden pl-6 pt-3">
 
         {/* ──────── Left column ──────── */}
-        {/* flex-1 min-h-0: takes leftover width; overflow-hidden clips children */}
-        <div className="flex-1 min-h-0 flex flex-col pr-6 overflow-hidden">
+        {/* flex-1: takes leftover width; lg clips children to fit viewport */}
+        <div className="flex-1 flex flex-col pr-6 lg:min-h-0 lg:overflow-hidden">
 
           {/* Badges row — fixed height */}
           <div
@@ -238,9 +239,10 @@ function UseCaseSlide({
             style={{ background: BRAND, animation: 'pmSlideUp 0.4s 0.18s ease-out both' }}
           />
 
-          {/* Description — flex-1 min-h-0: expands to fill ALL remaining column height */}
+          {/* Description — lg: flex-1 min-h-0 fills remaining column height & clips;
+              mobile: flows naturally so the full text is readable via scroll */}
           <div
-            className="flex-1 min-h-0 overflow-hidden relative"
+            className="lg:flex-1 lg:min-h-0 lg:overflow-hidden relative"
             style={{ animation: 'pmSlideUp 0.4s 0.2s ease-out both' }}
           >
             <p
@@ -249,14 +251,16 @@ function UseCaseSlide({
             >
               {uc.description}
             </p>
-            {/* Graceful fade at bottom instead of hard clip or scrollbar */}
-            <BottomFade height={72} />
+            {/* Graceful fade at bottom instead of hard clip — desktop only */}
+            <div className="hidden lg:block">
+              <BottomFade height={72} />
+            </div>
           </div>
         </div>
 
         {/* ──────── Right column ──────── */}
         <div
-          className="lg:w-[40%] flex-shrink-0 min-h-0 flex flex-col overflow-hidden border-t lg:border-t-0 lg:border-l pt-4 lg:pt-0 lg:pl-7 mt-3 lg:mt-0"
+          className="lg:w-[40%] flex-shrink-0 flex flex-col lg:min-h-0 lg:overflow-hidden border-t lg:border-t-0 lg:border-l pt-4 lg:pt-0 lg:pl-7 mt-3 lg:mt-0"
           style={{ borderColor: 'rgba(255,255,255,0.07)', animation: 'pmSlideUp 0.4s 0.15s ease-out both' }}
         >
           {/* Section label — fixed height */}
@@ -264,8 +268,8 @@ function UseCaseSlide({
             {hasSubCases ? `${uc.subCases!.length} Use Cases` : 'Business Value'}
           </p>
 
-          {/* List — flex-1 min-h-0: expands to fill remaining right-column height */}
-          <div className="flex-1 min-h-0 overflow-hidden relative">
+          {/* List — lg fills remaining right-column height & clips; mobile flows */}
+          <div className="lg:flex-1 lg:min-h-0 lg:overflow-hidden relative">
             {hasSubCases ? (
               <ul className="space-y-2.5">
                 {uc.subCases!.map((sc, i) => (
@@ -305,7 +309,9 @@ function UseCaseSlide({
                 ))}
               </ul>
             )}
-            <BottomFade height={48} />
+            <div className="hidden lg:block">
+              <BottomFade height={48} />
+            </div>
           </div>
         </div>
       </div>
@@ -332,6 +338,18 @@ export default function PresentMode({ usecases, trackerId }: { usecases: UseCase
   const [direction, setDirection] = useState<'forward' | 'backward'>('forward');
   const [slideKey, setSlideKey] = useState(0);
   const touchStartX = useRef<number | null>(null);
+
+  // Rotate hint — only on small portrait screens, dismissible
+  const [showRotate, setShowRotate] = useState(false);
+  const [rotateDismissed, setRotateDismissed] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(orientation: portrait) and (max-width: 640px)');
+    const update = () => setShowRotate(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
 
   const navigate = useCallback(
     (newIdx: number, dir: 'forward' | 'backward') => {
@@ -435,14 +453,16 @@ export default function PresentMode({ usecases, trackerId }: { usecases: UseCase
         </div>
 
         {/* ── Slide content area — flex-1 min-h-0, the only stretchy element ── */}
-        <div className="flex-1 min-h-0 relative overflow-hidden">
+        {/* On desktop: strict fit-to-viewport (overflow-hidden). On mobile:
+            allow vertical scroll so long content stays reachable in portrait. */}
+        <div className="flex-1 min-h-0 relative overflow-y-auto lg:overflow-hidden">
           {/*
-            absolute inset-0: matches parent height exactly.
-            flex flex-col: stacks slide children vertically.
-            Each child (TitleSlide / UseCaseSlide / ClosingSlide) must use
-            flex-1 min-h-0 so it fills this container without overflowing.
+            lg: absolute inset-0 matches parent height exactly and stacks children.
+            Mobile: in normal flow with min-h-full so it fills the area but can grow.
+            Each child (TitleSlide / UseCaseSlide / ClosingSlide) uses flex-1 min-h-0
+            at lg to fit; on mobile those constraints relax so content can scroll.
           */}
-          <div key={slideKey} className="absolute inset-0 px-6 pt-4 pb-2 flex flex-col">
+          <div key={slideKey} className="relative min-h-full lg:absolute lg:inset-0 px-6 pt-4 pb-2 flex flex-col">
             {slide.type === 'title'   && <TitleSlide />}
             {slide.type === 'usecase' && slide.usecase && (
               <UseCaseSlide uc={slide.usecase} ucIndex={slide.ucIndex!} direction={direction} />
@@ -450,6 +470,29 @@ export default function PresentMode({ usecases, trackerId }: { usecases: UseCase
             {slide.type === 'closing' && <ClosingSlide />}
           </div>
         </div>
+
+        {/* ── Rotate hint — small portrait screens only, dismissible ── */}
+        {showRotate && !rotateDismissed && (
+          <div
+            className="flex-shrink-0 flex items-center justify-center gap-2 px-4 py-2 mx-4 mb-1 rounded-xl text-xs"
+            style={{ background: 'rgba(6,155,223,0.12)', border: '1px solid rgba(6,155,223,0.3)', color: '#7dd3fc' }}
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M23 4v6h-6M1 20v-6h6" />
+              <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
+            </svg>
+            <span>Rotate your device for the best view</span>
+            <button
+              onClick={() => setRotateDismissed(true)}
+              aria-label="Dismiss"
+              className="ml-1 flex-shrink-0 opacity-70 hover:opacity-100"
+            >
+              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+        )}
 
         {/* ── Bottom navigation — flex-shrink-0 ── */}
         <div
@@ -459,7 +502,7 @@ export default function PresentMode({ usecases, trackerId }: { usecases: UseCase
           <button
             onClick={prev}
             disabled={idx === 0}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-20 disabled:cursor-not-allowed"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 sm:py-2 min-h-[44px] min-w-[44px] rounded-xl text-sm font-medium transition-all disabled:opacity-20 disabled:cursor-not-allowed"
             style={
               idx > 0
                 ? { background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.1)' }
@@ -498,7 +541,7 @@ export default function PresentMode({ usecases, trackerId }: { usecases: UseCase
           <button
             onClick={next}
             disabled={idx === total - 1}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-20 disabled:cursor-not-allowed"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 sm:py-2 min-h-[44px] min-w-[44px] rounded-xl text-sm font-semibold transition-all disabled:opacity-20 disabled:cursor-not-allowed"
             style={
               idx < total - 1
                 ? { background: BRAND, color: '#fff', boxShadow: `0 0 24px rgba(6,155,223,0.4)` }

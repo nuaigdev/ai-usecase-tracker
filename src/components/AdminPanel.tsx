@@ -168,7 +168,7 @@ function SubCaseRow({
       </div>
       {expanded && (
         <div className="p-4 space-y-4 border-t border-neutral-100">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Title">
               <input className={inputCls} value={sc.title} onChange={e => onUpdate('title', e.target.value)} placeholder="Sub-case title…" />
             </Field>
@@ -182,7 +182,7 @@ function SubCaseRow({
           <Field label="Description">
             <textarea className={textareaCls} style={{ minHeight: 100 }} value={sc.description} onChange={e => onUpdate('description', e.target.value)} placeholder="Full description…" />
           </Field>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Business Value (one per line)">
               <textarea className={textareaCls} value={sc.businessValue} onChange={e => onUpdate('businessValue', e.target.value)} placeholder={'Reduces manual work\nSaves time'} />
             </Field>
@@ -403,7 +403,7 @@ function TrackersTab({
             <p className="text-sm">Select a tracker to edit, or click Add</p>
           </div>
         ) : (
-          <div className="bg-white rounded-xl border border-neutral-200 p-6 space-y-4">
+          <div className="bg-white rounded-xl border border-neutral-200 p-4 sm:p-6 space-y-4">
             <Field label="Tracker Name">
               <input
                 className={inputCls}
@@ -766,8 +766,8 @@ export default function AdminPanel() {
                 </div>
               </div>
             ) : (
-              <div className="bg-white rounded-xl border border-neutral-200 p-6 space-y-5">
-                <div className="grid grid-cols-2 gap-4">
+              <div className="bg-white rounded-xl border border-neutral-200 p-4 sm:p-6 space-y-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Field label="Title">
                     <input className={inputCls} value={form.title} onChange={e => setField('title', e.target.value)} placeholder="e.g. Fall Detection AI" />
                   </Field>
@@ -776,7 +776,7 @@ export default function AdminPanel() {
                   </Field>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Field label="Tracker">
                     <select className={inputCls} value={form.trackerId} onChange={e => setField('trackerId', e.target.value)}>
                       {trackerData.trackers.map(t => (
@@ -819,7 +819,7 @@ export default function AdminPanel() {
                   </Field>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Field label="Owner">
                     <input className={inputCls} value={form.owner} onChange={e => setField('owner', e.target.value)} placeholder="NuAig" />
                   </Field>

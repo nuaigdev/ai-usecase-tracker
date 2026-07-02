@@ -1,8 +1,12 @@
 ---
+import type { Tracker } from '../types';
+import MobileNav from './MobileNav';
+
 interface Props {
   currentTrackerId?: string;
+  trackers?: Tracker[];
 }
-const { currentTrackerId } = Astro.props;
+const { currentTrackerId, trackers = [] } = Astro.props;
 const presentHref = currentTrackerId ? `/present?tracker=${currentTrackerId}` : '/present';
 ---
 <header class="bg-white border-b border-neutral-200 sticky top-0 z-40">
@@ -10,7 +14,7 @@ const presentHref = currentTrackerId ? `/present?tracker=${currentTrackerId}` : 
     <a href="/" class="flex items-center gap-3 flex-shrink-0">
       <img src="/logo.svg" alt="NuAig" class="h-7 w-auto" />
     </a>
-    <div class="flex items-center gap-4">
+    <div class="hidden lg:flex items-center gap-4">
       <span class="text-sm text-neutral-400 hidden sm:block font-medium tracking-wide">Tracker</span>
       <a
         href="/admin"
@@ -32,5 +36,6 @@ const presentHref = currentTrackerId ? `/present?tracker=${currentTrackerId}` : 
         Present
       </a>
     </div>
+    <MobileNav trackers={trackers} currentTrackerId={currentTrackerId} client:load />
   </div>
 </header>

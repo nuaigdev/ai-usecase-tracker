@@ -112,7 +112,7 @@ function ExpandedBody({ uc }: { uc: UseCase }) {
   const hasSubCases = !!uc.subCases?.length;
 
   return (
-    <div className="border-t border-neutral-100 px-6 pb-6 pt-5">
+    <div className="border-t border-neutral-100 px-5 sm:px-6 pb-6 pt-5">
       {hasSubCases ? (
         <div>
           <div className="flex flex-wrap gap-1.5 mb-5">
@@ -222,7 +222,7 @@ function Card({ uc, expanded, onToggle }: { uc: UseCase; expanded: boolean; onTo
     >
       <button
         onClick={onToggle}
-        className="w-full text-left p-6 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded-2xl"
+        className="w-full text-left p-5 sm:p-6 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded-2xl"
       >
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">

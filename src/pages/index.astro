@@ -13,7 +13,7 @@ const tracker = data.trackers.find(t => t.id === trackerId) ?? data.trackers[0];
 const usecases = tracker?.usecases ?? [];
 ---
 <Layout title={`${tracker?.title ?? 'Tracker'} — NuAig`}>
-  <Header currentTrackerId={tracker?.id} />
+  <Header currentTrackerId={tracker?.id} trackers={data.trackers} />
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
     {data.trackers.length === 0 ? (
       <div class="flex flex-col items-center justify-center py-32 text-neutral-400">
