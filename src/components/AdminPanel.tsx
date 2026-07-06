@@ -122,10 +122,40 @@ function Label({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+// Where a field's content surfaces for the audience.
+//  - 'both' → shown in the slideshow (/present) AND on the dashboard card
+//  - 'ppt'  → slideshow only
+//  - 'card' → dashboard card only (never appears in the presentation)
+type Visibility = 'both' | 'ppt' | 'card';
+
+function VisibilityBadges({ where }: { where: Visibility }) {
+  const inPpt = where === 'both' || where === 'ppt';
+  const inCard = where === 'both' || where === 'card';
+  return (
+    <span className="inline-flex items-center gap-1">
+      {inPpt && (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-brand/10 text-brand normal-case tracking-normal">
+          <span className="w-1 h-1 rounded-full bg-brand" />
+          Slideshow
+        </span>
+      )}
+      {inCard && (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-neutral-100 text-neutral-500 normal-case tracking-normal">
+          <span className="w-1 h-1 rounded-full bg-neutral-400" />
+          Card
+        </span>
+      )}
+    </span>
+  );
+}
+
+function Field({ label, where, children }: { label: string; where?: Visibility; children: React.ReactNode }) {
   return (
     <div>
-      <Label>{label}</Label>
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <Label>{label}</Label>
+        {where && <VisibilityBadges where={where} />}
+      </div>
       {children}
     </div>
   );
@@ -169,24 +199,24 @@ function SubCaseRow({
       {expanded && (
         <div className="p-4 space-y-4 border-t border-neutral-100">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="Title">
+            <Field label="Title" where="both">
               <input className={inputCls} value={sc.title} onChange={e => onUpdate('title', e.target.value)} placeholder="Sub-case title…" />
             </Field>
             <Field label="ID (auto-generated)">
               <input className={inputCls} value={sc.id} onChange={e => onUpdate('id', e.target.value)} placeholder="sub-case-id" />
             </Field>
           </div>
-          <Field label="Summary">
+          <Field label="Summary" where="both">
             <textarea className={textareaCls} style={{ minHeight: 56 }} value={sc.summary} onChange={e => onUpdate('summary', e.target.value)} placeholder="One-line description…" />
           </Field>
-          <Field label="Description">
+          <Field label="Description" where="card">
             <textarea className={textareaCls} style={{ minHeight: 100 }} value={sc.description} onChange={e => onUpdate('description', e.target.value)} placeholder="Full description…" />
           </Field>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="Business Value (one per line)">
+            <Field label="Business Value (one per line)" where="card">
               <textarea className={textareaCls} value={sc.businessValue} onChange={e => onUpdate('businessValue', e.target.value)} placeholder={'Reduces manual work\nSaves time'} />
             </Field>
-            <Field label="Tech Stack (one per line)">
+            <Field label="Tech Stack (one per line)" where="card">
               <textarea className={textareaCls} value={sc.techStack} onChange={e => onUpdate('techStack', e.target.value)} placeholder={'Voice AI\nNLP'} />
             </Field>
           </div>
@@ -528,10 +558,22 @@ export default function AdminPanel() {
   const [selectedId, setSelectedId] = useState<string | 'new' | null>(null);
   const [form, setForm] = useState<FormState>(blankForm(''));
   const [dirty, setDirty] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
+  const [selectedTrackerId, setSelectedTrackerId] = useState('');
 
   const usecases = trackerData.trackers.flatMap(t => t.usecases);
   const defaultTrackerId = trackerData.trackers[0]?.id ?? '';
+  const activeTracker =
+    trackerData.trackers.find(t => t.id === selectedTrackerId) ?? trackerData.trackers[0];
+  const visibleUsecases = activeTracker?.usecases ?? [];
+
+  // Once data loads (or trackers change), default the filter to the first tracker
+  // and keep it pointing at a tracker that still exists.
+  useEffect(() => {
+    if (trackerData.trackers.length === 0) return;
+    if (!trackerData.trackers.some(t => t.id === selectedTrackerId)) {
+      setSelectedTrackerId(trackerData.trackers[0].id);
+    }
+  }, [trackerData, selectedTrackerId]);
 
   function handleVerified(key: string) {
     setAuthKey(key);
@@ -561,7 +603,7 @@ export default function AdminPanel() {
   function startNew() {
     if (dirty && !confirm('You have unsaved changes. Discard them?')) return;
     setSelectedId('new');
-    setForm(blankForm(defaultTrackerId));
+    setForm(blankForm(selectedTrackerId || defaultTrackerId));
     setDirty(false);
     setMessage(null);
   }
@@ -573,22 +615,13 @@ export default function AdminPanel() {
     setMessage(null);
   }
 
-  // Track viewport so the edit form renders inline (desktop) or as a modal (mobile)
+  // Lock body scroll while the edit modal is open
   useEffect(() => {
-    const mq = window.matchMedia('(max-width: 1023px)');
-    const update = () => setIsMobile(mq.matches);
-    update();
-    mq.addEventListener('change', update);
-    return () => mq.removeEventListener('change', update);
-  }, []);
-
-  // Lock body scroll while the mobile edit modal is open
-  useEffect(() => {
-    if (!isMobile || selectedId === null) return;
+    if (selectedId === null) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = prev; };
-  }, [isMobile, selectedId]);
+  }, [selectedId]);
 
   function setField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm(prev => {
@@ -657,6 +690,7 @@ export default function AdminPanel() {
       await persist(next);
       setTrackerData(next);
       setSelectedId(uc.id);
+      setSelectedTrackerId(targetTrackerId);
       setDirty(false);
       setMessage({ type: 'ok', text: 'Saved! Changes are live immediately.' });
     } catch (e: any) {
@@ -709,8 +743,25 @@ export default function AdminPanel() {
 
   const editCard = (
     <div className="bg-white rounded-xl border border-neutral-200 p-4 sm:p-6 space-y-5">
+      {/* Legend: explains what the badges next to each field mean */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg bg-neutral-50 border border-neutral-100 px-3 py-2.5 text-xs text-neutral-500">
+        <span className="font-semibold text-neutral-600">Where each field appears:</span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-brand/10 text-brand">
+            <span className="w-1 h-1 rounded-full bg-brand" />Slideshow
+          </span>
+          shown in Present mode
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-neutral-100 text-neutral-500">
+            <span className="w-1 h-1 rounded-full bg-neutral-400" />Card
+          </span>
+          shown on the dashboard card
+        </span>
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Field label="Title">
+        <Field label="Title" where="both">
           <input className={inputCls} value={form.title} onChange={e => setField('title', e.target.value)} placeholder="e.g. Fall Detection AI" />
         </Field>
         <Field label="ID (auto-generated)">
@@ -726,7 +777,7 @@ export default function AdminPanel() {
             ))}
           </select>
         </Field>
-        <Field label="Category">
+        <Field label="Category" where="both">
           <select className={inputCls} value={form.category} onChange={e => setField('category', e.target.value)}>
             {CATEGORIES.map(c => (
               <option key={c} value={c}>{c}</option>
@@ -735,37 +786,37 @@ export default function AdminPanel() {
         </Field>
       </div>
 
-      <Field label="Summary (shown on card)">
+      <Field label="Summary" where="card">
         <textarea className={textareaCls} style={{ minHeight: 60 }} value={form.summary} onChange={e => setField('summary', e.target.value)} placeholder="Short sentence shown on the card…" />
       </Field>
 
-      <Field label="Description (shown when expanded)">
+      <Field label="Description" where="both">
         <textarea className={textareaCls} style={{ minHeight: 120 }} value={form.description} onChange={e => setField('description', e.target.value)} placeholder="Full explanation of the use case…" />
       </Field>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Field label="Business Value (one per line)">
+        <Field label="Business Value (one per line)" where="both">
           <textarea className={textareaCls} value={form.businessValue} onChange={e => setField('businessValue', e.target.value)} placeholder={'Reduce admin overhead\nFaster care decisions'} />
         </Field>
-        <Field label="Tech Stack (one per line)">
+        <Field label="Tech Stack (one per line)" where="both">
           <textarea className={textareaCls} value={form.techStack} onChange={e => setField('techStack', e.target.value)} placeholder={'Claude AI\nEMR Integration'} />
         </Field>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Field label="Limitations (one per line)">
+        <Field label="Limitations (one per line)" where="card">
           <textarea className={textareaCls} value={form.limitations} onChange={e => setField('limitations', e.target.value)} placeholder={'Requires EMR integration\nNeeds clinical review'} />
         </Field>
-        <Field label="Compliance Flags (one per line)">
+        <Field label="Compliance Flags (one per line)" where="card">
           <textarea className={textareaCls} value={form.complianceFlags} onChange={e => setField('complianceFlags', e.target.value)} placeholder={'HIPAA\nPHI Handling'} />
         </Field>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Field label="Owner">
+        <Field label="Owner" where="card">
           <input className={inputCls} value={form.owner} onChange={e => setField('owner', e.target.value)} placeholder="NuAig" />
         </Field>
-        <Field label="Last Updated">
+        <Field label="Last Updated" where="card">
           <input type="date" className={inputCls} value={form.lastUpdated} onChange={e => setField('lastUpdated', e.target.value)} />
         </Field>
       </div>
@@ -805,8 +856,8 @@ export default function AdminPanel() {
         <button className={TAB_CLS('trackers')} onClick={() => setActiveTab('trackers')}>Trackers</button>
       </div>
 
-      {/* Message banner (use-cases tab only) */}
-      {activeTab === 'usecases' && message && (
+      {/* Message banner (use-cases tab, only when the edit modal is closed) */}
+      {activeTab === 'usecases' && selectedId === null && message && (
         <div className={`px-4 py-3 rounded-lg text-sm font-medium ${message.type === 'ok' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
           {message.text}
         </div>
@@ -815,82 +866,92 @@ export default function AdminPanel() {
       {activeTab === 'trackers' ? (
         <TrackersTab trackers={trackerData.trackers} onSave={handleSaveTrackers} saving={saving} />
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Sidebar */}
-          <div className="lg:col-span-1">
-            <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-100">
-                <span className="text-sm font-semibold text-neutral-700">
-                  {loading ? 'Loading…' : `${usecases.length} Use Cases`}
-                </span>
-                <button
-                  onClick={startNew}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand/90 transition-colors"
-                >
-                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-                  </svg>
-                  Add New
-                </button>
+        <div>
+          {/* Toolbar: pick a tracker, then work on just its use cases */}
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-5">
+            <div className="flex-1 min-w-0 sm:max-w-xs">
+              <Label>Tracker</Label>
+              <select
+                className={inputCls}
+                value={activeTracker?.id ?? ''}
+                onChange={e => setSelectedTrackerId(e.target.value)}
+                disabled={trackerData.trackers.length === 0}
+              >
+                {trackerData.trackers.length === 0 ? (
+                  <option value="">No trackers yet</option>
+                ) : (
+                  trackerData.trackers.map(t => (
+                    <option key={t.id} value={t.id}>{t.title} ({t.usecases.length})</option>
+                  ))
+                )}
+              </select>
+            </div>
+            <button
+              onClick={startNew}
+              disabled={trackerData.trackers.length === 0}
+              className="flex-shrink-0 inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              Add Use Case
+            </button>
+          </div>
+
+          <div className="text-xs text-neutral-400 mb-4 font-medium">
+            {loading
+              ? 'Loading…'
+              : `${visibleUsecases.length} use case${visibleUsecases.length === 1 ? '' : 's'} in ${activeTracker?.title ?? 'this tracker'}`}
+          </div>
+
+          {/* Full-width list of the selected tracker's use cases */}
+          {!loading && visibleUsecases.length === 0 ? (
+            <div className="h-56 flex items-center justify-center text-neutral-400 rounded-xl border border-dashed border-neutral-200">
+              <div className="text-center px-6">
+                <svg viewBox="0 0 24 24" className="h-10 w-10 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                  <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                </svg>
+                <p className="text-sm">No use cases in this tracker yet. Click “Add Use Case” to create one.</p>
               </div>
-
-              {selectedId === 'new' && (
-                <div className="px-4 py-3 border-b border-neutral-100 bg-brand/5 border-l-2 border-l-brand">
-                  <div className="text-sm font-semibold text-brand">New Use Case</div>
-                  <div className="text-xs text-neutral-500 mt-0.5">Unsaved</div>
-                </div>
-              )}
-
-              {trackerData.trackers.map(tracker => (
-                <div key={tracker.id}>
-                  {trackerData.trackers.length > 1 && (
-                    <div className="px-4 py-1.5 bg-neutral-50 border-b border-neutral-100">
-                      <span className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">{tracker.title}</span>
-                    </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {visibleUsecases.map(uc => (
+                <button
+                  key={uc.id}
+                  onClick={() => selectCase(uc)}
+                  className="text-left bg-white rounded-xl border border-neutral-200 p-4 hover:border-brand hover:shadow-md hover:shadow-brand/5 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <h3 className="text-sm font-semibold text-neutral-900 leading-snug flex-1 min-w-0">{uc.title}</h3>
+                    <svg viewBox="0 0 24 24" className="h-4 w-4 text-neutral-300 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                      <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                    </svg>
+                  </div>
+                  {uc.summary && (
+                    <p className="text-xs text-neutral-500 leading-relaxed mt-1.5 line-clamp-2">{uc.summary}</p>
                   )}
-                  {tracker.usecases.map(uc => (
-                    <button
-                      key={uc.id}
-                      onClick={() => selectCase(uc)}
-                      className={`w-full text-left px-4 py-3 border-b border-neutral-100 last:border-b-0 transition-colors hover:bg-neutral-50 ${selectedId === uc.id ? 'bg-brand/5 border-l-2 border-l-brand' : ''}`}
-                    >
-                      <div className="text-sm font-semibold text-neutral-900 leading-snug">{uc.title}</div>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-xs text-neutral-400">{uc.category}</span>
-                        {uc.subCases?.length ? (
-                          <span className="text-xs text-neutral-400">{uc.subCases.length} sub-cases</span>
-                        ) : null}
-                      </div>
-                    </button>
-                  ))}
-                </div>
+                  <div className="flex flex-wrap items-center gap-1.5 mt-3">
+                    <span className="px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600 text-[11px] font-medium">{uc.category}</span>
+                    {uc.subCases?.length ? (
+                      <span className="px-2 py-0.5 rounded-full bg-brand/10 text-brand text-[11px] font-medium">{uc.subCases.length} sub-cases</span>
+                    ) : null}
+                  </div>
+                </button>
               ))}
             </div>
-          </div>
-
-          {/* Edit form */}
-          <div className="lg:col-span-2">
-            {selectedId === null ? (
-              <div className="h-64 flex items-center justify-center text-neutral-400 rounded-xl border border-dashed border-neutral-200">
-                <div className="text-center">
-                  <svg viewBox="0 0 24 24" className="h-10 w-10 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
-                    <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
-                  </svg>
-                  <p className="text-sm">Select a use case to edit, or click Add New</p>
-                </div>
-              </div>
-            ) : isMobile ? null : editCard}
-          </div>
+          )}
         </div>
       )}
 
-      {/* Mobile: edit form in a bottom-sheet modal instead of a long scroll */}
-      {activeTab === 'usecases' && isMobile && selectedId !== null && (
-        <div className="fixed inset-0 z-50 flex flex-col">
+      {/* Edit / create use case — modal on all screen sizes */}
+      {activeTab === 'usecases' && selectedId !== null && (
+        <div className="fixed inset-0 z-50 flex flex-col sm:items-center sm:justify-center">
           <div className="absolute inset-0 bg-neutral-950/50 backdrop-blur-sm" onClick={closeForm} />
-          <div className="relative mt-auto w-full max-h-[92vh] flex flex-col bg-neutral-50 rounded-t-2xl shadow-2xl">
-            <div className="flex-shrink-0 flex items-center justify-between px-4 h-14 bg-white border-b border-neutral-100 rounded-t-2xl">
+          <div className="relative mt-auto sm:mt-0 w-full sm:max-w-3xl sm:mx-4 max-h-[92vh] sm:max-h-[90vh] flex flex-col bg-neutral-50 rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden">
+            <div className="flex-shrink-0 flex items-center justify-between px-4 sm:px-6 h-14 bg-white border-b border-neutral-100">
               <span className="text-sm font-semibold text-neutral-900">
                 {selectedId === 'new' ? 'New Use Case' : 'Edit Use Case'}
               </span>
@@ -904,7 +965,7 @@ export default function AdminPanel() {
                 </svg>
               </button>
             </div>
-            <div className="overflow-y-auto p-4">
+            <div className="overflow-y-auto p-4 sm:p-6">
               {message && (
                 <div className={`px-4 py-3 rounded-lg text-sm font-medium mb-4 ${message.type === 'ok' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
                   {message.text}
