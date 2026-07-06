@@ -829,6 +829,12 @@ export default function AdminPanel() {
         onDirty={() => setDirty(true)}
       />
 
+      {message && (
+        <div className={`px-4 py-3 rounded-lg text-sm font-medium ${message.type === 'ok' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+          {message.text}
+        </div>
+      )}
+
       <div className="flex items-center justify-between pt-2 border-t border-neutral-100">
         <div>
           {selectedId !== 'new' && (
@@ -966,11 +972,6 @@ export default function AdminPanel() {
               </button>
             </div>
             <div className="overflow-y-auto p-4 sm:p-6">
-              {message && (
-                <div className={`px-4 py-3 rounded-lg text-sm font-medium mb-4 ${message.type === 'ok' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
-                  {message.text}
-                </div>
-              )}
               {editCard}
             </div>
           </div>
