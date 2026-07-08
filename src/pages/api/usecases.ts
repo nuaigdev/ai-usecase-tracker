@@ -8,7 +8,7 @@ import type { TrackerOp } from '../../types';
 export const GET: APIRoute = async () => {
   const data = await readData();
   return new Response(JSON.stringify(data), {
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
   });
 };
 

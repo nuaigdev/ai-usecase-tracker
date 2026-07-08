@@ -17,7 +17,13 @@ export async function readData(): Promise<TrackerData> {
     const { blobs } = await list({ prefix: BLOB_PATHNAME });
     if (blobs.length === 0) return { trackers: [] };
 
-    const res = await fetch(blobs[0].url, {
+    // Vercel Blob serves content through a CDN. Because writeData()
+    // overwrites the same pathname on every save, an edge node can keep
+    // serving a stale cached copy for a while after a write even though our
+    // own fetch is `no-store`. Busting the URL with a unique query param
+    // forces a cache miss so we always read what was actually last written.
+    const blobUrl = `${blobs[0].url}${blobs[0].url.includes('?') ? '&' : '?'}_=${Date.now()}`;
+    const res = await fetch(blobUrl, {
       headers: { Authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN}` },
       cache: 'no-store',
     });

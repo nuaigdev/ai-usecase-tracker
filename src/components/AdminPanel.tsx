@@ -597,7 +597,7 @@ export default function AdminPanel() {
   // the fresh data so callers that need it *right now* (not after the next
   // render) don't have to read back through the trackerData state variable.
   async function refreshData(): Promise<TrackerData> {
-    const data: TrackerData = await fetch('/api/usecases').then(r => r.json());
+    const data: TrackerData = await fetch('/api/usecases', { cache: 'no-store' }).then(r => r.json());
     setTrackerData(data);
     return data;
   }
@@ -629,14 +629,17 @@ export default function AdminPanel() {
     setDirty(false);
   }
 
-  async function startNew() {
+  // Opens the blank form immediately (nothing stale to show yet), and
+  // refreshes in the background so the use-case grid behind the modal — and
+  // the tracker dropdown inside it — pick up anything another admin just
+  // added, without delaying the modal itself.
+  function startNew() {
     if (dirty && !confirm('You have unsaved changes. Discard them?')) return;
     setMessage(null);
-    const fresh = await refreshData().catch(() => trackerData);
-    const trackerId = fresh.trackers.some(t => t.id === selectedTrackerId) ? selectedTrackerId : (fresh.trackers[0]?.id ?? '');
     setSelectedId('new');
-    setForm(blankForm(trackerId));
+    setForm(blankForm(selectedTrackerId || defaultTrackerId));
     setDirty(false);
+    refreshData().catch(() => {});
   }
 
   function closeForm() {
