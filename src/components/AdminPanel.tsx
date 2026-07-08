@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import type { UseCase, SubCase, Tracker, TrackerData } from '../types';
+import type { UseCase, SubCase, Tracker, TrackerData, TrackerOp } from '../types';
 
 const CATEGORIES = [
   'Resident Care',
@@ -303,11 +303,17 @@ function SubCasesSection({
 
 function TrackersTab({
   trackers,
-  onSave,
+  onCreate,
+  onUpdate,
+  onDelete,
+  onRefresh,
   saving,
 }: {
   trackers: Tracker[];
-  onSave: (next: Tracker[]) => Promise<void>;
+  onCreate: (title: string, description?: string) => Promise<void>;
+  onUpdate: (id: string, title: string, description?: string) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+  onRefresh: () => Promise<TrackerData>;
   saving: boolean;
 }) {
   const [list, setList] = useState<Tracker[]>(trackers);
@@ -320,38 +326,47 @@ function TrackersTab({
   // Keep list in sync when parent data changes
   useEffect(() => { setList(trackers); }, [trackers]);
 
-  function startEdit(t: Tracker) {
+  // Re-fetch before opening the editor so we're never editing against a
+  // tracker list that went stale while this admin's tab sat idle.
+  async function startEdit(t: Tracker) {
+    setMsg(null);
+    await onRefresh().catch(() => {});
     setEditId(t.id);
     setTitleInput(t.title);
     setDescInput(t.description ?? '');
     setDirty(false);
-    setMsg(null);
   }
 
-  function startNew() {
+  async function startNew() {
+    setMsg(null);
+    await onRefresh().catch(() => {});
     setEditId('new');
     setTitleInput('');
     setDescInput('');
     setDirty(false);
-    setMsg(null);
   }
 
   async function handleSaveTracker() {
     if (!titleInput.trim()) return;
-    let next: Tracker[];
-    if (editId === 'new') {
-      const id = slugify(titleInput);
-      if (list.some(t => t.id === id)) {
-        setMsg({ type: 'error', text: `A tracker with id "${id}" already exists.` });
-        return;
-      }
-      next = [...list, { id, title: titleInput.trim(), description: descInput.trim() || undefined, usecases: [] }];
-    } else {
-      next = list.map(t => t.id === editId ? { ...t, title: titleInput.trim(), description: descInput.trim() || undefined } : t);
-    }
     try {
-      await onSave(next);
-      setList(next);
+      // Re-fetch immediately before saving so the id-collision / existence
+      // checks below run against the latest data, not what loaded earlier.
+      const fresh = await onRefresh();
+      if (editId === 'new') {
+        const id = slugify(titleInput);
+        if (fresh.trackers.some(t => t.id === id)) {
+          setMsg({ type: 'error', text: `A tracker with id "${id}" already exists.` });
+          return;
+        }
+        await onCreate(titleInput.trim(), descInput.trim() || undefined);
+      } else {
+        if (!fresh.trackers.some(t => t.id === editId)) {
+          setMsg({ type: 'error', text: 'This tracker no longer exists — someone else may have deleted it.' });
+          setEditId(null);
+          return;
+        }
+        await onUpdate(editId, titleInput.trim(), descInput.trim() || undefined);
+      }
       setEditId(null);
       setDirty(false);
       setMsg({ type: 'ok', text: 'Tracker saved.' });
@@ -364,10 +379,8 @@ function TrackersTab({
     const t = list.find(x => x.id === id);
     if (!t) return;
     if (t.usecases.length > 0 && !confirm(`"${t.title}" has ${t.usecases.length} use cases. Delete anyway?`)) return;
-    const next = list.filter(x => x.id !== id);
     try {
-      await onSave(next);
-      setList(next);
+      await onDelete(id);
       if (editId === id) setEditId(null);
       setMsg({ type: 'ok', text: 'Tracker deleted.' });
     } catch (e: any) {
@@ -580,32 +593,50 @@ export default function AdminPanel() {
     loadData();
   }
 
+  // Fetches the latest data from the blob and syncs it into state. Returns
+  // the fresh data so callers that need it *right now* (not after the next
+  // render) don't have to read back through the trackerData state variable.
+  async function refreshData(): Promise<TrackerData> {
+    const data: TrackerData = await fetch('/api/usecases').then(r => r.json());
+    setTrackerData(data);
+    return data;
+  }
+
   async function loadData() {
     setLoading(true);
     try {
-      const data: TrackerData = await fetch('/api/usecases').then(r => r.json());
-      setTrackerData(data);
+      await refreshData();
     } catch {
       setMessage({ type: 'error', text: 'Failed to load data.' });
     }
     setLoading(false);
   }
 
-  function selectCase(uc: UseCase) {
+  // Re-fetch before opening the edit modal so we're never editing a use case
+  // against data that went stale while this admin's tab sat idle.
+  async function selectCase(uc: UseCase) {
     if (dirty && !confirm('You have unsaved changes. Discard them?')) return;
-    const trackerId = trackerData.trackers.find(t => t.usecases.some(u => u.id === uc.id))?.id ?? defaultTrackerId;
-    setSelectedId(uc.id);
-    setForm(toForm(uc, trackerId));
-    setDirty(false);
     setMessage(null);
+    const fresh = await refreshData().catch(() => trackerData);
+    const freshUc = fresh.trackers.flatMap(t => t.usecases).find(u => u.id === uc.id);
+    if (!freshUc) {
+      setMessage({ type: 'error', text: 'This use case no longer exists — someone else may have deleted it.' });
+      return;
+    }
+    const trackerId = fresh.trackers.find(t => t.usecases.some(u => u.id === uc.id))?.id ?? fresh.trackers[0]?.id ?? '';
+    setSelectedId(freshUc.id);
+    setForm(toForm(freshUc, trackerId));
+    setDirty(false);
   }
 
-  function startNew() {
+  async function startNew() {
     if (dirty && !confirm('You have unsaved changes. Discard them?')) return;
-    setSelectedId('new');
-    setForm(blankForm(selectedTrackerId || defaultTrackerId));
-    setDirty(false);
     setMessage(null);
+    const fresh = await refreshData().catch(() => trackerData);
+    const trackerId = fresh.trackers.some(t => t.id === selectedTrackerId) ? selectedTrackerId : (fresh.trackers[0]?.id ?? '');
+    setSelectedId('new');
+    setForm(blankForm(trackerId));
+    setDirty(false);
   }
 
   function closeForm() {
@@ -634,60 +665,53 @@ export default function AdminPanel() {
     setDirty(true);
   }
 
-  async function persist(data: TrackerData) {
+  // Sends one targeted operation; the server reads the latest blob, applies
+  // just this change, and writes the merged result back — so two admins
+  // editing concurrently merge instead of one clobbering the other.
+  async function persistOp(op: TrackerOp): Promise<TrackerData> {
     const res = await fetch('/api/usecases', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authKey}` },
-      body: JSON.stringify(data),
+      body: JSON.stringify(op),
     });
     if (!res.ok) {
       const txt = await res.text();
       throw new Error(txt === 'Unauthorized' ? 'Wrong admin key.' : txt);
     }
+    return res.json();
   }
 
   async function handleSave() {
     setSaving(true);
     setMessage(null);
     try {
+      // Re-fetch immediately before saving so the id-collision check and
+      // tracker choice below reflect the latest data, not what loaded when
+      // the modal was opened.
+      const fresh = await refreshData();
       const uc = fromForm(form);
-      const targetTrackerId = form.trackerId || defaultTrackerId;
+      const freshUsecases = fresh.trackers.flatMap(t => t.usecases);
+      const targetTrackerId = fresh.trackers.some(t => t.id === form.trackerId)
+        ? form.trackerId
+        : (fresh.trackers[0]?.id ?? '');
 
-      if (selectedId === 'new' && usecases.some(u => u.id === uc.id)) {
+      if (selectedId === 'new' && freshUsecases.some(u => u.id === uc.id)) {
         setMessage({ type: 'error', text: `ID "${uc.id}" already exists.` });
         setSaving(false);
         return;
       }
-
-      let next: TrackerData;
-      if (selectedId === 'new') {
-        next = {
-          trackers: trackerData.trackers.map(t =>
-            t.id === targetTrackerId ? { ...t, usecases: [...t.usecases, uc] } : t
-          ),
-        };
-      } else {
-        // If tracker changed, move the use case
-        const oldTrackerId = trackerData.trackers.find(t => t.usecases.some(u => u.id === selectedId))?.id;
-        if (oldTrackerId && oldTrackerId !== targetTrackerId) {
-          next = {
-            trackers: trackerData.trackers.map(t => {
-              if (t.id === oldTrackerId) return { ...t, usecases: t.usecases.filter(u => u.id !== selectedId) };
-              if (t.id === targetTrackerId) return { ...t, usecases: [...t.usecases, uc] };
-              return t;
-            }),
-          };
-        } else {
-          next = {
-            trackers: trackerData.trackers.map(t => ({
-              ...t,
-              usecases: t.usecases.map(u => (u.id === selectedId ? uc : u)),
-            })),
-          };
-        }
+      if (!targetTrackerId) {
+        setMessage({ type: 'error', text: 'No tracker available to save into.' });
+        setSaving(false);
+        return;
       }
 
-      await persist(next);
+      const op: TrackerOp =
+        selectedId === 'new'
+          ? { type: 'addUsecase', trackerId: targetTrackerId, usecase: uc }
+          : { type: 'updateUsecase', usecaseId: selectedId, trackerId: targetTrackerId, usecase: uc };
+
+      const next = await persistOp(op);
       setTrackerData(next);
       setSelectedId(uc.id);
       setSelectedTrackerId(targetTrackerId);
@@ -705,13 +729,7 @@ export default function AdminPanel() {
     setSaving(true);
     setMessage(null);
     try {
-      const next: TrackerData = {
-        trackers: trackerData.trackers.map(t => ({
-          ...t,
-          usecases: t.usecases.filter(u => u.id !== selectedId),
-        })),
-      };
-      await persist(next);
+      const next = await persistOp({ type: 'deleteUsecase', usecaseId: selectedId as string });
       setTrackerData(next);
       setSelectedId(null);
       setDirty(false);
@@ -722,10 +740,20 @@ export default function AdminPanel() {
     setSaving(false);
   }
 
-  async function handleSaveTrackers(next: Tracker[]) {
-    const nextData: TrackerData = { trackers: next };
-    await persist(nextData);
-    setTrackerData(nextData);
+  async function handleCreateTracker(title: string, description?: string) {
+    const tracker: Tracker = { id: slugify(title), title, description, usecases: [] };
+    const next = await persistOp({ type: 'addTracker', tracker });
+    setTrackerData(next);
+  }
+
+  async function handleUpdateTracker(id: string, title: string, description?: string) {
+    const next = await persistOp({ type: 'updateTracker', trackerId: id, title, description });
+    setTrackerData(next);
+  }
+
+  async function handleDeleteTracker(id: string) {
+    const next = await persistOp({ type: 'deleteTracker', trackerId: id });
+    setTrackerData(next);
   }
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -870,7 +898,14 @@ export default function AdminPanel() {
       )}
 
       {activeTab === 'trackers' ? (
-        <TrackersTab trackers={trackerData.trackers} onSave={handleSaveTrackers} saving={saving} />
+        <TrackersTab
+          trackers={trackerData.trackers}
+          onCreate={handleCreateTracker}
+          onUpdate={handleUpdateTracker}
+          onDelete={handleDeleteTracker}
+          onRefresh={refreshData}
+          saving={saving}
+        />
       ) : (
         <div>
           {/* Toolbar: pick a tracker, then work on just its use cases */}

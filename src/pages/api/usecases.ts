@@ -2,7 +2,8 @@ export const prerender = false;
 
 import type { APIRoute } from 'astro';
 import { readData, writeData } from '../../lib/storage';
-import type { TrackerData } from '../../types';
+import { applyOp, OpError } from '../../lib/ops';
+import type { TrackerOp } from '../../types';
 
 export const GET: APIRoute = async () => {
   const data = await readData();
@@ -11,6 +12,11 @@ export const GET: APIRoute = async () => {
   });
 };
 
+// Applies a single, targeted operation against the freshest stored data
+// (read right before write) rather than accepting a full TrackerData
+// snapshot from the client. This keeps two admins editing concurrently from
+// clobbering each other's changes, since a stale client can only ever
+// describe "add/update/delete this one thing," never overwrite the world.
 export const POST: APIRoute = async ({ request }) => {
   const adminSecret = import.meta.env.ADMIN_SECRET;
   if (!adminSecret) {
@@ -22,19 +28,29 @@ export const POST: APIRoute = async ({ request }) => {
     return new Response('Unauthorized', { status: 401 });
   }
 
-  let body: unknown;
+  let op: TrackerOp;
   try {
-    body = await request.json();
+    op = (await request.json()) as TrackerOp;
   } catch {
     return new Response('Invalid JSON', { status: 400 });
   }
 
-  if (!body || typeof body !== 'object' || !Array.isArray((body as any).trackers)) {
-    return new Response('Expected { trackers: [] }', { status: 400 });
+  if (!op || typeof op !== 'object' || typeof (op as any).type !== 'string') {
+    return new Response('Expected an operation object with a "type" field', { status: 400 });
   }
 
-  await writeData(body as TrackerData);
-  return new Response(JSON.stringify({ ok: true }), {
-    headers: { 'Content-Type': 'application/json' },
-  });
+  try {
+    const current = await readData();
+    const next = applyOp(current, op);
+    await writeData(next);
+    return new Response(JSON.stringify(next), {
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch (e) {
+    if (e instanceof OpError) {
+      return new Response(e.message, { status: e.status });
+    }
+    console.error('[api/usecases] apply op failed:', e);
+    return new Response('Failed to apply update', { status: 500 });
+  }
 };
