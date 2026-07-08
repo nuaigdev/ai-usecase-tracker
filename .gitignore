@@ -19,3 +19,7 @@ dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local-only blob admin tooling — never commit (contains/consumes blob write access)
+/scripts/
+usecases_tracker_updated.json
