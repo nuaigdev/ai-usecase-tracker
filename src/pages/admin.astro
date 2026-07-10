@@ -9,7 +9,7 @@ import { readData } from '../lib/storage';
 const data = await readData();
 ---
 <Layout title="Admin — NuAig AI Tracker">
-  <Header trackers={data.trackers} />
+  <Header trackers={data.trackers} showPresent={false} />
   <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
     <div class="mb-8">
       <h1 class="text-2xl font-bold text-neutral-900">Manage Use Cases</h1>

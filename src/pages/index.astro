@@ -3,46 +3,48 @@ export const prerender = false;
 
 import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
-import TrackerNav from '../components/TrackerNav.astro';
 import CardGrid from '../components/CardGrid';
+import IntegrationsView from '../components/IntegrationsView';
+import AutomationView from '../components/AutomationView';
 import { readData } from '../lib/storage';
 
 const data = await readData();
 const trackerId = Astro.url.searchParams.get('tracker') ?? data.trackers[0]?.id ?? '';
 const tracker = data.trackers.find(t => t.id === trackerId) ?? data.trackers[0];
-const usecases = tracker?.usecases ?? [];
+const type = tracker?.type ?? 'usecases';
+const isDark = type === 'integrations';
 ---
-<Layout title={`${tracker?.title ?? 'Tracker'} — NuAig`}>
-  <Header currentTrackerId={tracker?.id} trackers={data.trackers} />
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-    {data.trackers.length === 0 ? (
+<Layout title={`${tracker?.title ?? 'Tracker'} — NuAig`} theme={isDark ? 'dark' : 'light'}>
+  <Header currentTrackerId={tracker?.id} trackers={data.trackers} showPresent={type === 'usecases'} />
+
+  {data.trackers.length === 0 ? (
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
       <div class="flex flex-col items-center justify-center py-32 text-neutral-400">
         <svg viewBox="0 0 24 24" class="h-14 w-14 mb-4 opacity-25" fill="none" stroke="currentColor" stroke-width="1.5">
           <path d="M9 17H7A5 5 0 017 7h10a5 5 0 010 10h-2" />
           <line x1="12" y1="12" x2="12" y2="21" />
         </svg>
         <p class="text-sm font-medium mb-1">No trackers yet</p>
-        <p class="text-xs">Go to <a href="/admin" class="text-brand underline">Admin</a> to create your first tracker and add use cases.</p>
+        <p class="text-xs">Go to <a href="/admin" class="text-brand underline">Admin</a> to create your first tracker.</p>
       </div>
-    ) : (
-      <div class="flex gap-8">
-        <TrackerNav trackers={data.trackers} currentId={tracker?.id ?? ''} />
-        <div class="flex-1 min-w-0">
-          {tracker ? (
-            <div>
-              <div class="mb-6">
-                <h1 class="text-2xl font-bold text-neutral-900">{tracker.title}</h1>
-                {tracker.description && (
-                  <p class="text-sm text-neutral-500 mt-1">{tracker.description}</p>
-                )}
-              </div>
-              <CardGrid usecases={usecases} client:load />
-            </div>
-          ) : (
-            <p class="text-neutral-400 text-sm">Select a tracker from the left panel.</p>
-          )}
-        </div>
+    </div>
+  ) : type === 'integrations' ? (
+    <IntegrationsView tracker={tracker} client:load />
+  ) : type === 'automation' ? (
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+      <div class="mb-6">
+        <h1 class="text-2xl font-bold text-neutral-900">{tracker.title}</h1>
+        {tracker.description && <p class="text-sm text-neutral-500 mt-1">{tracker.description}</p>}
       </div>
-    )}
-  </div>
+      <AutomationView tracker={tracker} client:load />
+    </main>
+  ) : (
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+      <div class="mb-6">
+        <h1 class="text-2xl font-bold text-neutral-900">{tracker.title}</h1>
+        {tracker.description && <p class="text-sm text-neutral-500 mt-1">{tracker.description}</p>}
+      </div>
+      <CardGrid usecases={tracker.usecases} client:load />
+    </main>
+  )}
 </Layout>

@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nuaig — Senior Living Integrations</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Nunito+Sans:ital,opsz,wght@0,6..12,300;0,6..12,400;0,6..12,500;0,6..12,600;1,6..12,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --charcoal:    #585858;
+  --teal:        #1a8585;
+  --teal-light:  #229999;
+  --teal-dim:    rgba(26,133,133,0.12);
+  --teal-glow:   rgba(26,133,133,0.22);
+  --teal-border: rgba(26,133,133,0.18);
+  --ink:         #2a2a2a;
+  --paper:       #f6fafa;
+  --muted:       #6b7f7f;
+  --subtle:      #8fa5a5;
+  --dark:        #0f2222;
+  --dark2:       #0b1a1a;
+  --dark3:       #122828;
+  --font-d: 'Outfit', sans-serif;
+  --font-b: 'Nunito Sans', sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+body{background:var(--dark2);color:#fff;font-family:var(--font-b);font-size:16px;line-height:1.7;overflow-x:hidden;}
+
+/* ── GRAIN TEXTURE ── */
+body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.028;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size:128px;}
+
+/* ── GRID OVERLAY ── */
+.grid-bg{position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:linear-gradient(rgba(26,133,133,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(26,133,133,.04) 1px,transparent 1px);
+  background-size:52px 52px;}
+
+/* ── NAV ── */
+nav{position:sticky;top:0;z-index:200;display:flex;align-items:center;justify-content:space-between;padding:14px 52px;background:rgba(11,26,26,.92);backdrop-filter:blur(24px);border-bottom:1px solid rgba(26,133,133,.14);}
+.logo{display:flex;align-items:center;gap:0;text-decoration:none;font-family:var(--font-d);font-weight:700;font-size:20px;letter-spacing:-0.3px;}
+.l-rem{color:#c8d8d8;}
+.l-o{display:inline-flex;align-items:center;justify-content:center;width:17px;height:21px;border:2px solid rgba(200,216,216,.45);border-radius:50%;font-size:11px;color:rgba(200,216,216,.45);margin:0 1px;}
+.l-rphic{color:var(--teal-light);}
+.l-badge{margin-left:8px;font-family:var(--font-d);font-size:8.5px;font-weight:700;letter-spacing:1.8px;text-transform:uppercase;background:var(--teal);color:#fff;padding:2px 7px;border-radius:3px;}
+.nav-back{font-family:var(--font-d);font-size:13px;font-weight:600;color:rgba(255,255,255,.4);text-decoration:none;display:flex;align-items:center;gap:6px;transition:color .18s;}
+.nav-back:hover{color:var(--teal-light);}
+.nav-back::before{content:'←';font-size:14px;}
+
+/* ── HERO ── */
+.hero{padding:88px 52px 64px;text-align:center;position:relative;z-index:1;}
+.hero::after{content:'';position:absolute;left:50%;top:0;transform:translateX(-50%);width:700px;height:500px;
+  background:radial-gradient(ellipse,rgba(26,133,133,.12) 0%,transparent 65%);pointer-events:none;z-index:-1;}
+
+.hero-eyebrow{display:inline-flex;align-items:center;gap:9px;background:rgba(26,133,133,.1);border:1px solid rgba(26,133,133,.22);border-radius:100px;padding:6px 16px;font-family:var(--font-d);font-size:10.5px;font-weight:700;color:var(--teal-light);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:24px;}
+.hero-eyebrow::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--teal-light);animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.4;transform:scale(1.4);}}
+
+.hero h1{font-family:var(--font-d);font-size:clamp(32px,4.2vw,54px);font-weight:800;line-height:1.08;letter-spacing:-1.5px;margin-bottom:18px;color:#fff;}
+.hero h1 em{color:var(--teal-light);font-style:normal;}
+.hero-sub{font-size:16px;color:rgba(255,255,255,.45);max-width:560px;margin:0 auto 32px;line-height:1.85;}
+
+/* stat strip */
+.stat-strip{display:flex;align-items:center;justify-content:center;gap:0;flex-wrap:wrap;margin-top:40px;}
+.stat-item{padding:14px 36px;border-right:1px solid rgba(26,133,133,.14);}
+.stat-item:last-child{border-right:none;}
+.stat-num{font-family:var(--font-d);font-size:28px;font-weight:800;color:var(--teal-light);letter-spacing:-1px;line-height:1;}
+.stat-label{font-size:11.5px;color:rgba(255,255,255,.35);margin-top:3px;}
+
+/* ── FILTER BAR ── */
+.filter-section{padding:0 52px 40px;position:relative;z-index:1;}
+.filter-bar{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:48px;}
+.filter-btn{font-family:var(--font-d);font-size:12px;font-weight:600;padding:8px 18px;border-radius:100px;border:1.5px solid rgba(26,133,133,.2);color:rgba(255,255,255,.4);background:transparent;cursor:pointer;transition:all .18s;letter-spacing:.3px;}
+.filter-btn:hover{border-color:rgba(26,133,133,.5);color:rgba(255,255,255,.8);}
+.filter-btn.active{background:var(--teal);border-color:var(--teal);color:#fff;box-shadow:0 0 18px var(--teal-glow);}
+
+/* ── CATEGORY BLOCKS ── */
+.categories{padding:0 52px 80px;position:relative;z-index:1;display:flex;flex-direction:column;gap:52px;}
+
+.cat-block{opacity:1;transition:opacity .25s;}
+.cat-block.hidden{display:none;}
+
+.cat-header{display:flex;align-items:center;gap:16px;margin-bottom:24px;}
+.cat-icon{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;border:1px solid rgba(26,133,133,.2);background:rgba(26,133,133,.08);}
+.cat-title-wrap{}
+.cat-label{font-family:var(--font-d);font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--teal-light);opacity:.7;margin-bottom:2px;}
+.cat-title{font-family:var(--font-d);font-size:20px;font-weight:800;letter-spacing:-0.4px;color:#fff;}
+.cat-count{margin-left:auto;font-family:var(--font-d);font-size:11px;font-weight:700;color:rgba(255,255,255,.25);background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.07);padding:3px 12px;border-radius:100px;}
+.cat-divider{flex:1;height:1px;background:linear-gradient(90deg,rgba(26,133,133,.2),transparent);}
+
+/* ── LOGO CARDS GRID ── */
+.logo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;}
+
+.logo-card{
+  background:rgba(255,255,255,.03);
+  border:1px solid rgba(26,133,133,.12);
+  border-radius:14px;
+  padding:22px 20px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+  cursor:default;
+  position:relative;overflow:hidden;
+  transition:border-color .22s,background .22s,transform .18s,box-shadow .22s;
+  min-height:100px;
+  text-align:center;
+}
+.logo-card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:1.5px;
+  background:linear-gradient(90deg,transparent,var(--teal),transparent);
+  opacity:0;transition:opacity .22s;
+}
+.logo-card:hover{
+  border-color:rgba(26,133,133,.35);
+  background:rgba(26,133,133,.07);
+  transform:translateY(-2px);
+  box-shadow:0 8px 32px rgba(26,133,133,.12);
+}
+.logo-card:hover::before{opacity:1;}
+
+.card-logo-text{
+  font-family:var(--font-d);
+  font-size:15px;font-weight:700;
+  color:rgba(255,255,255,.82);
+  letter-spacing:-0.2px;
+  line-height:1.2;
+}
+.card-desc{
+  font-size:11px;
+  color:rgba(255,255,255,.3);
+  line-height:1.45;
+}
+.card-tag{
+  font-family:var(--font-d);
+  font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;
+  color:var(--teal-light);opacity:.7;
+  background:rgba(26,133,133,.1);
+  border:1px solid rgba(26,133,133,.15);
+  padding:2px 9px;border-radius:3px;
+}
+
+/* ── BOTTOM CTA ── */
+.bottom-cta{padding:72px 52px;text-align:center;position:relative;z-index:1;border-top:1px solid rgba(26,133,133,.1);}
+.bottom-cta::before{content:'';position:absolute;left:50%;top:0;transform:translateX(-50%);width:600px;height:400px;background:radial-gradient(ellipse,rgba(26,133,133,.08) 0%,transparent 65%);pointer-events:none;}
+.cta-label{font-family:var(--font-d);font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--teal-light);margin-bottom:14px;opacity:.8;}
+.cta-title{font-family:var(--font-d);font-size:clamp(24px,3vw,38px);font-weight:800;letter-spacing:-1px;color:#fff;margin-bottom:12px;line-height:1.1;}
+.cta-sub{font-size:15px;color:rgba(255,255,255,.4);max-width:480px;margin:0 auto 32px;line-height:1.8;}
+.btn-cta{display:inline-flex;align-items:center;gap:8px;background:var(--teal);color:#fff;padding:14px 28px;border-radius:7px;font-family:var(--font-d);font-size:14px;font-weight:700;text-decoration:none;box-shadow:0 4px 22px var(--teal-glow);transition:background .18s,transform .15s;}
+.btn-cta:hover{background:var(--teal-light);transform:translateY(-2px);}
+.btn-ghost-cta{display:inline-flex;align-items:center;gap:8px;background:transparent;color:rgba(255,255,255,.45);padding:14px 24px;border-radius:7px;font-family:var(--font-d);font-size:14px;font-weight:600;text-decoration:none;border:1.5px solid rgba(26,133,133,.2);transition:all .18s;margin-left:10px;}
+.btn-ghost-cta:hover{border-color:rgba(26,133,133,.4);color:rgba(255,255,255,.75);}
+
+/* FOOTER */
+footer{background:rgba(8,16,16,.8);padding:24px 52px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid rgba(26,133,133,.1);}
+footer p{font-size:12px;color:rgba(255,255,255,.2);}
+
+/* REVEAL */
+.reveal{opacity:0;transform:translateY(22px);transition:opacity .5s ease,transform .5s ease;}
+.reveal.visible{opacity:1;transform:none;}
+
+@media(max-width:860px){
+  nav{padding:13px 18px;}
+  .hero{padding:72px 18px 48px;}
+  .filter-section{padding:0 18px 32px;}
+  .categories{padding:0 18px 60px;gap:40px;}
+  .logo-grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;}
+  .stat-strip{gap:0;}
+  .stat-item{padding:12px 20px;}
+  .bottom-cta{padding:52px 18px;}
+  footer{flex-direction:column;gap:8px;text-align:center;padding:20px 18px;}
+}
+</style>
+</head>
+<body>
+<div class="grid-bg"></div>
+
+<!-- NAV -->
+<nav>
+  <a href="https://nuaig.ai" class="logo"><span class="l-rem">nu</span><span class="l-o">a</span><span class="l-rphic">ig</span><span class="l-badge">AI</span></a>
+  <a href="https://nuaig.ai" class="nav-back">Back to main site</a>
+</nav>
+
+<!-- HERO -->
+<div class="hero reveal">
+  <div class="hero-eyebrow"><span></span>Senior Living Healthcare</div>
+  <h1>Integrations we've built<br>in <em>senior living.</em></h1>
+  <p class="hero-sub">We've connected the most widely-used platforms across senior living operations — EHR, finance, HR, CRM, and beyond. Every integration is production-tested and running live.</p>
+  <div class="stat-strip">
+    <div class="stat-item"><div class="stat-num">19</div><div class="stat-label">Platforms integrated</div></div>
+    <div class="stat-item"><div class="stat-num">7</div><div class="stat-label">Categories covered</div></div>
+    <div class="stat-item"><div class="stat-num">100%</div><div class="stat-label">Production-tested</div></div>
+    <div class="stat-item"><div class="stat-num">Custom</div><div class="stat-label">Built for senior living</div></div>
+  </div>
+</div>
+
+<!-- FILTER -->
+<div class="filter-section">
+  <div class="filter-bar">
+    <button class="filter-btn active" onclick="filterCat('all',this)">All Categories</button>
+    <button class="filter-btn" onclick="filterCat('ehr',this)">🏥 EHR & Clinical</button>
+    <button class="filter-btn" onclick="filterCat('finance',this)">💰 Finance</button>
+    <button class="filter-btn" onclick="filterCat('hr',this)">👥 HR & Workforce</button>
+    <button class="filter-btn" onclick="filterCat('crm',this)">🤝 CRM & Fundraising</button>
+    <button class="filter-btn" onclick="filterCat('ops',this)">⚙️ Operations</button>
+    <button class="filter-btn" onclick="filterCat('resident',this)">🏡 Resident Engagement</button>
+    <button class="filter-btn" onclick="filterCat('learning',this)">📚 Learning</button>
+  </div>
+</div>
+
+<!-- CATEGORIES -->
+<div class="categories">
+
+  <!-- EHR & CLINICAL -->
+  <div class="cat-block reveal" data-cat="ehr">
+    <div class="cat-header">
+      <div class="cat-icon">🏥</div>
+      <div class="cat-title-wrap">
+        <div class="cat-label">Category 01</div>
+        <div class="cat-title">EHR & Clinical</div>
+      </div>
+      <div class="cat-divider"></div>
+      <div class="cat-count">4 platforms</div>
+    </div>
+    <div class="logo-grid">
+      <div class="logo-card">
+        <div class="card-logo-text">PointClickCare</div>
+        <div class="card-desc">Leading EHR for post-acute and long-term care. Resident records, billing, and clinical workflows.</div>
+        <div class="card-tag">EHR</div>
+      </div>
+      <div class="logo-card">
+        <div class="card-logo-text">MatrixCare</div>
+        <div class="card-desc">Comprehensive EHR platform for senior care — MDS, billing, clinical documentation.</div>
+        <div class="card-tag">EHR</div>
+      </div>
+      <div class="logo-card">
+        <div class="card-logo-text">NetHealth</div>
+        <div class="card-desc">Therapy and rehab EMR built for skilled nursing, home health, and outpatient settings.</div>
+        <div class="card-tag">Therapy EMR</div>
+      </div>
+      <div class="logo-card">
+        <div class="card-logo-text">WellSky</div>
+        <div class="card-desc">Care coordination and home health platform for senior living and post-acute care.</div>
+        <div class="card-tag">Care Coordination</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FINANCE -->
+  <div class="cat-block reveal" data-cat="finance">
+    <div class="cat-header">
+      <div class="cat-icon">💰</div>
+      <div class="cat-title-wrap">
+        <div class="cat-label">Category 02</div>
+        <div class="cat-title">Finance & Accounting</div>
+      </div>
+      <div class="cat-divider"></div>
+      <div class="cat-count">4 platforms</div>
+    </div>
+    <div class="logo-grid">
+      <div class="logo-card">
+        <div class="card-logo-text">Sage Intacct</div>
+        <div class="card-desc">Cloud financial management — multi-entity accounting, reporting, and compliance for senior living orgs.</div>
+        <div class="card-tag">Accounting</div>
+      </div>
+      <div class="logo-card">
+        <div class="card-logo-text">Great Plains</div>
+        <div class="card-desc">Microsoft Dynamics GP — general ledger, AP/AR, and financial reporting for multi-facility operators.</div>
+        <div class="card-tag">ERP / GL</div>
+      </div>
+      <div class="logo-card">
+        <div class="card-logo-text">Rexpert</div>
+        <div class="card-desc">Budget management and forecasting solution built specifically for senior living communities.</div>
+        <div class="card-tag">Budgeting</div>
+      </div>
+      <div class="logo-card">
+        <div class="card-logo-text">FullCount</div>
+        <div class="card-desc">Payroll and financial reporting tool purpose-built for senior living and long-term care operators.</div>
+        <div class="card-tag">Payroll / Finance</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HR & WORKFORCE -->
+  <div class="cat-block reveal" data-cat="hr">
+    <div class="cat-header">
+      <div class="cat-icon">👥</div>
+      <div class="cat-title-wrap">
+        <div class="cat-label">Category 03</div>
+        <div class="cat-title">HR & Workforce</div>
+      </div>
+      <div class="cat-divider"></div>
+      <div class="cat-count">2 platforms</div>
+    </div>
+    <div class="logo-grid">
+      <div class="logo-card">
+        <div class="card-logo-text">UKG</div>
+        <div class="card-desc">Unified HR, payroll, and workforce management — scheduling, time tracking, and compliance.</div>
+        <div class="card-tag">HCM / Payroll</div>
+      </div>
+      <div class="logo-card">
+        <div class="card-logo-text">UltiPro</div>
+        <div class="card-desc">UKG Pro (formerly UltiPro) — talent management, HR, and payroll for senior care operators.</div>
+        <div class="card-tag">HRIS</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CRM & FUNDRAISING -->
+  <div class="cat-block reveal" data-cat="crm">
+    <div class="cat-header">
+      <div class="cat-icon">🤝</div>
+      <div class="cat-title-wrap">
+        <div class="cat-label">Category 04</div>
+        <div class="cat-title">CRM & Fundraising</div>
+      </div>
+      <div class="cat-divider"></div>
+      <div class="cat-count">4 platforms</div>
+    </div>
+    <div class="logo-grid">
+      <div class="logo-card">
+        <div class="card-logo-text">WelcomeHome</div>
+        <div class="card-desc">Senior living CRM — prospect tracking, move-in pipeline, and census management.</div>
+        <div class="card-tag">CRM</div>
+      </div>
+      <div class="logo-card">
+        <div class="card-logo-text">Aline</div>
+        <div class="card-desc">Sales and marketing CRM for senior living communities — lead management and occupancy analytics.</div>
+        <div class="card-tag">CRM</div>
+      </div>
+      <div class="logo-card">
+        <div class="card-logo-text">Bloomerang</div>
+        <div class="card-desc">Donor management and fundraising CRM for senior living foundations and non-profits.</div>
+        <div class="card-tag">Fundraising</div>
+      </div>
+      <div class="logo-card">
+        <div class="card-logo-text">Raiser's Edge</div>
+        <div class="card-desc">Blackbaud's flagship fundraising and donor management platform for senior care non-profits.</div>
+        <div class="card-tag">Fundraising</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- OPERATIONS -->
+  <div class="cat-block reveal" data-cat="ops">
+    <div class="cat-header">
+      <div class="cat-icon">⚙️</div>
+      <div class="cat-title-wrap">
+        <div class="cat-label">Category 05</div>
+        <div class="cat-title">Operations & Facilities</div>
+      </div>
+      <div class="cat-divider"></div>
+      <div class="cat-count">2 platforms</div>
+    </div>
+    <div class="logo-grid">
+      <div class="logo-card">
+        <div class="card-logo-text">Square 9</div>
+        <div class="card-desc">Document management and intelligent automation — forms, workflows, and records for senior living ops.</div>
+        <div class="card-tag">Document Mgmt</div>
+      </div>
+      <div class="logo-card">
+        <div class="card-logo-text">WorxHub</div>
+        <div class="card-desc">Maintenance and work order management built for senior living facilities and plant operations.</div>
+        <div class="card-tag">Facilities / CMMS</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RESIDENT ENGAGEMENT -->
+  <div class="cat-block reveal" data-cat="resident">
+    <div class="cat-header">
+      <div class="cat-icon">🏡</div>
+      <div class="cat-title-wrap">
+        <div class="cat-label">Category 06</div>
+        <div class="cat-title">Resident Engagement</div>
+      </div>
+      <div class="cat-divider"></div>
+      <div class="cat-count">2 platforms</div>
+    </div>
+    <div class="logo-grid">
+      <div class="logo-card">
+        <div class="card-logo-text">Cubigo</div>
+        <div class="card-desc">Resident engagement platform — activities, transportation, dining requests, and family communication.</div>
+        <div class="card-tag">Engagement</div>
+      </div>
+      <div class="logo-card">
+        <div class="card-logo-text">Vimeo</div>
+        <div class="card-desc">Secure video hosting for resident programming, virtual activities, and family connection content.</div>
+        <div class="card-tag">Video / Media</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LEARNING -->
+  <div class="cat-block reveal" data-cat="learning">
+    <div class="cat-header">
+      <div class="cat-icon">📚</div>
+      <div class="cat-title-wrap">
+        <div class="cat-label">Category 07</div>
+        <div class="cat-title">Learning & Compliance</div>
+      </div>
+      <div class="cat-divider"></div>
+      <div class="cat-count">1 platform</div>
+    </div>
+    <div class="logo-grid">
+      <div class="logo-card" style="max-width:260px;">
+        <div class="card-logo-text">Relias</div>
+        <div class="card-desc">Healthcare learning management system — compliance training, onboarding, and continuing education for senior care staff.</div>
+        <div class="card-tag">LMS / Compliance</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- BOTTOM CTA -->
+<div class="bottom-cta reveal">
+  <div class="cta-label">Work with us</div>
+  <h2 class="cta-title">Need a platform connected<br>that isn't on this list?</h2>
+  <p class="cta-sub">We build custom integrations for senior living — whether it's a niche EHR, a proprietary billing system, or a new vendor. Tell us what you need.</p>
+  <a href="https://nuaig.ai/contact" class="btn-cta">→ Start a Conversation</a>
+  <a href="mailto:hello@nuaig.ai" class="btn-ghost-cta">hello@nuaig.ai</a>
+</div>
+
+<!-- FOOTER -->
+<footer>
+  <a href="https://nuaig.ai" class="logo" style="font-size:17px;"><span class="l-rem">nu</span><span class="l-o" style="width:15px;height:19px;font-size:10px;">a</span><span class="l-rphic">ig</span><span class="l-badge">AI</span></a>
+  <p style="font-style:italic;color:rgba(255,255,255,.22);">AI-powered solutions for senior living.</p>
+  <p>hello@nuaig.ai · © 2026 Nuaig</p>
+</footer>
+
+<script>
+// Scroll reveal
+const io = new IntersectionObserver(entries => {
+  entries.forEach((e,i) => {
+    if(e.isIntersecting){
+      setTimeout(()=>e.target.classList.add('visible'), i * 60);
+    }
+  });
+},{threshold:0.06});
+document.querySelectorAll('.reveal').forEach(r=>io.observe(r));
+
+// Filter
+function filterCat(cat, btn) {
+  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.cat-block').forEach(block => {
+    if(cat === 'all' || block.dataset.cat === cat) {
+      block.classList.remove('hidden');
+      block.classList.add('visible');
+    } else {
+      block.classList.add('hidden');
+    }
+  });
+}
+</script>
+</body>
+</html>

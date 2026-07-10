@@ -1,95 +1,111 @@
-import type { UseCase, TrackerData } from '../types';
+import type {
+  TrackerData, Tracker, Category, TrackerType, TrackerConfig,
+  UseCase, Integration, AutomationProcess,
+} from '../types';
+import { createServerClient, isSupabaseConfigured } from './supabase';
 
-// The pathname used before versioning existed — kept only as a read
-// fallback for the very first read after this change, before any write
-// has happened yet.
-const LEGACY_PATHNAME = 'usecases.json';
-
-// Every save writes a brand-new pathname under this prefix instead of
-// overwriting one fixed pathname. Vercel Blob serves content through a CDN,
-// and overwriting a fixed pathname doesn't reliably invalidate every edge
-// immediately — some edges kept serving pre-write content for a window
-// after a save, so a plain page refresh could momentarily miss another
-// admin's just-saved change. A brand-new pathname has never been cached
-// anywhere, so there's nothing stale for any edge to serve.
-const VERSION_PREFIX = 'usecases/v-';
-
-let devMemory: TrackerData | null = null;
-
-function isBlobConfigured(): boolean {
-  return Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+// Row shapes as stored in Supabase.
+interface TrackerRow {
+  id: string; slug: string; title: string; description: string | null;
+  type: string; config: TrackerConfig | null; position: number;
+}
+interface CategoryRow {
+  id: string; tracker_id: string; slug: string; label: string;
+  icon: string | null; position: number;
+}
+interface ItemRow {
+  id: string; tracker_id: string; category_id: string | null;
+  slug: string; title: string; summary: string | null;
+  position: number; data: Record<string, any>;
 }
 
-async function fetchBlobJson(url: string): Promise<unknown | null> {
-  const bustUrl = `${url}${url.includes('?') ? '&' : '?'}_=${Date.now()}`;
-  const res = await fetch(bustUrl, {
-    headers: { Authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN}` },
-    cache: 'no-store',
-  });
-  if (!res.ok) return null;
-  return res.json();
+const asType = (t: string): TrackerType =>
+  t === 'integrations' || t === 'automation' ? t : 'usecases';
+
+function toUseCase(row: ItemRow): UseCase {
+  const d = row.data ?? {};
+  return {
+    id: row.slug,
+    title: row.title,
+    category: d.category ?? 'Resident Care',
+    summary: row.summary ?? '',
+    description: d.description ?? '',
+    businessValue: d.businessValue ?? [],
+    techStack: d.techStack ?? [],
+    limitations: d.limitations ?? [],
+    complianceFlags: d.complianceFlags ?? [],
+    subCases: d.subCases,
+    owner: d.owner,
+    lastUpdated: d.lastUpdated,
+  };
 }
 
-function normalize(raw: unknown): TrackerData {
-  // Migrate old flat UseCase[] format → TrackerData
-  if (Array.isArray(raw)) {
-    const usecases = raw.map(({ status, ...rest }: any) => rest) as UseCase[];
-    return { trackers: [{ id: 'ai-usecases', title: 'AI Usecases', usecases }] };
-  }
-  return raw as TrackerData;
+function toIntegration(row: ItemRow): Integration {
+  const d = row.data ?? {};
+  return {
+    id: row.slug,
+    categoryId: row.category_id,
+    title: row.title,
+    summary: row.summary ?? '',
+    tag: d.tag,
+    url: d.url,
+  };
+}
+
+function toProcess(row: ItemRow): AutomationProcess {
+  const d = row.data ?? {};
+  return {
+    id: row.slug,
+    categoryId: row.category_id,
+    title: row.title,
+    summary: row.summary ?? '',
+    description: d.description ?? '',
+    businessValue: d.businessValue ?? [],
+    techStack: d.techStack ?? [],
+    steps: d.steps ?? [],
+  };
 }
 
 export async function readData(): Promise<TrackerData> {
-  if (!isBlobConfigured()) {
-    return devMemory ?? { trackers: [] };
-  }
-  try {
-    const { list } = await import('@vercel/blob');
+  if (!isSupabaseConfigured()) return { trackers: [] };
 
-    const { blobs } = await list({ prefix: VERSION_PREFIX });
-    if (blobs.length > 0) {
-      const latest = blobs.reduce((a, b) => (a.uploadedAt > b.uploadedAt ? a : b));
-      const raw = await fetchBlobJson(latest.url);
-      if (raw !== null) return normalize(raw);
-    }
+  const supabase = createServerClient();
+  const [tRes, cRes, iRes] = await Promise.all([
+    supabase.from('trackers').select('*').order('position'),
+    supabase.from('categories').select('*').order('position'),
+    supabase.from('items').select('*').order('position'),
+  ]);
 
-    // No versioned snapshot yet — fall back to the legacy fixed pathname.
-    const legacy = await list({ prefix: LEGACY_PATHNAME });
-    if (legacy.blobs.length === 0) return { trackers: [] };
-    const raw = await fetchBlobJson(legacy.blobs[0].url);
-    return raw === null ? { trackers: [] } : normalize(raw);
-  } catch (e) {
-    console.error('[storage] Blob read error:', e);
+  if (tRes.error || cRes.error || iRes.error) {
+    console.error('[storage] Supabase read error:',
+      tRes.error ?? cRes.error ?? iRes.error);
     return { trackers: [] };
   }
-}
 
-export async function writeData(data: TrackerData): Promise<void> {
-  if (!isBlobConfigured()) {
-    devMemory = data;
-    return;
-  }
-  const { put, list, del } = await import('@vercel/blob');
-  const pathname = `${VERSION_PREFIX}${Date.now()}-${Math.random().toString(36).slice(2, 8)}.json`;
+  const trackerRows = (tRes.data ?? []) as TrackerRow[];
+  const catRows = (cRes.data ?? []) as CategoryRow[];
+  const itemRows = (iRes.data ?? []) as ItemRow[];
 
-  await put(pathname, JSON.stringify(data), {
-    access: 'private',
-    contentType: 'application/json',
+  const trackers: Tracker[] = trackerRows.map(tr => {
+    const type = asType(tr.type);
+    const categories: Category[] = catRows
+      .filter(c => c.tracker_id === tr.id)
+      .map(c => ({ id: c.id, slug: c.slug, label: c.label, icon: c.icon ?? undefined, position: c.position }));
+    const rows = itemRows.filter(i => i.tracker_id === tr.id);
+
+    return {
+      id: tr.slug,
+      slug: tr.slug,
+      title: tr.title,
+      description: tr.description ?? undefined,
+      type,
+      config: tr.config ?? {},
+      categories,
+      usecases: type === 'usecases' ? rows.map(toUseCase) : [],
+      integrations: type === 'integrations' ? rows.map(toIntegration) : [],
+      processes: type === 'automation' ? rows.map(toProcess) : [],
+    };
   });
 
-  // Best-effort cleanup of older versions (and the legacy pathname) so
-  // storage doesn't grow unbounded. Never let a cleanup failure fail the
-  // write itself — readData() always resolves to the newest upload anyway.
-  try {
-    const [{ blobs: versioned }, { blobs: legacy }] = await Promise.all([
-      list({ prefix: VERSION_PREFIX }),
-      list({ prefix: LEGACY_PATHNAME }),
-    ]);
-    const stale = [...versioned.filter(b => b.pathname !== pathname), ...legacy];
-    if (stale.length > 0) {
-      await del(stale.map(b => b.url));
-    }
-  } catch (e) {
-    console.error('[storage] Blob cleanup error (non-fatal):', e);
-  }
+  return { trackers };
 }

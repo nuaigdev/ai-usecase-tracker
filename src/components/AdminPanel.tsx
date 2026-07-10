@@ -1,523 +1,56 @@
-import { useState, useEffect, useRef } from 'react';
-import type { UseCase, SubCase, Tracker, TrackerData, TrackerOp } from '../types';
+import { useEffect, useState } from 'react';
+import type { Session } from '@supabase/supabase-js';
+import { getSupabase, isSupabaseConfigured } from '../lib/supabase';
+import type { TrackerType, AutomationStepKind } from '../types';
 
-const CATEGORIES = [
-  'Resident Care',
-  'Operations & Admin',
-  'Staff & Workforce',
-  'Sales & Admissions',
-  'Quality & Compliance',
-  'Family & Community',
-];
-
-// ── Form helpers ──────────────────────────────────────────────────────────────
-
-interface SubCaseFormState {
-  id: string;
-  title: string;
-  summary: string;
-  description: string;
-  businessValue: string;
-  techStack: string;
+// ── Row shapes (with real uuids, unlike the public reshaped types) ────────────
+interface TrackerRow {
+  id: string; slug: string; title: string; description: string | null;
+  type: string; config: any; position: number;
 }
-
-interface FormState {
-  id: string;
-  title: string;
-  category: string;
-  trackerId: string;
-  summary: string;
-  description: string;
-  businessValue: string;
-  techStack: string;
-  limitations: string;
-  complianceFlags: string;
-  owner: string;
-  lastUpdated: string;
-  hasSubCases: boolean;
-  subCases: SubCaseFormState[];
+interface CategoryRow {
+  id: string; tracker_id: string; slug: string; label: string; icon: string | null; position: number;
 }
-
-const slugify = (s: string) =>
-  s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-
-const splitLines = (s: string) => s.split('\n').map(l => l.trim()).filter(Boolean);
-
-function toSubCaseForm(sc: SubCase): SubCaseFormState {
-  return {
-    id: sc.id,
-    title: sc.title,
-    summary: sc.summary ?? '',
-    description: sc.description ?? '',
-    businessValue: (sc.businessValue ?? []).join('\n'),
-    techStack: (sc.techStack ?? []).join('\n'),
-  };
+interface ItemRow {
+  id: string; tracker_id: string; category_id: string | null;
+  slug: string; title: string; summary: string | null; position: number; data: any;
 }
+interface ProfileRow { id: string; role: string; tracker_id: string | null; email: string | null; }
 
-function fromSubCaseForm(f: SubCaseFormState): SubCase {
-  return {
-    id: f.id || slugify(f.title),
-    title: f.title,
-    summary: f.summary,
-    description: f.description,
-    businessValue: splitLines(f.businessValue),
-    techStack: splitLines(f.techStack),
-  };
-}
+const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+const lines = (s: string) => s.split('\n').map(l => l.trim()).filter(Boolean);
+const joinLines = (a?: string[]) => (a ?? []).join('\n');
 
-function toForm(uc: Partial<UseCase>, trackerId: string): FormState {
-  return {
-    id: uc.id ?? '',
-    title: uc.title ?? '',
-    category: uc.category ?? 'Resident Care',
-    trackerId,
-    summary: uc.summary ?? '',
-    description: uc.description ?? '',
-    businessValue: (uc.businessValue ?? []).join('\n'),
-    techStack: (uc.techStack ?? []).join('\n'),
-    limitations: (uc.limitations ?? []).join('\n'),
-    complianceFlags: (uc.complianceFlags ?? []).join('\n'),
-    owner: uc.owner ?? 'NuAig',
-    lastUpdated: uc.lastUpdated ?? new Date().toISOString().split('T')[0],
-    hasSubCases: !!uc.subCases?.length,
-    subCases: (uc.subCases ?? []).map(toSubCaseForm),
-  };
-}
-
-function fromForm(f: FormState): UseCase {
-  const uc: UseCase = {
-    id: f.id || slugify(f.title),
-    title: f.title,
-    category: f.category,
-    summary: f.summary,
-    description: f.description,
-    businessValue: splitLines(f.businessValue),
-    techStack: splitLines(f.techStack),
-    limitations: splitLines(f.limitations),
-    complianceFlags: splitLines(f.complianceFlags),
-    owner: f.owner || undefined,
-    lastUpdated: f.lastUpdated || undefined,
-  };
-  if (f.hasSubCases && f.subCases.length > 0) {
-    uc.subCases = f.subCases.map(fromSubCaseForm);
-  }
-  return uc;
-}
-
-function blankSubCase(): SubCaseFormState {
-  return { id: '', title: '', summary: '', description: '', businessValue: '', techStack: '' };
-}
-
-function blankForm(defaultTrackerId: string): FormState {
-  return toForm({}, defaultTrackerId);
-}
-
-// ── Shared UI primitives ──────────────────────────────────────────────────────
-
-function Label({ children }: { children: React.ReactNode }) {
-  return (
-    <label className="block text-xs font-semibold text-neutral-500 uppercase tracking-wide mb-1">
-      {children}
-    </label>
-  );
-}
-
-// Where a field's content surfaces for the audience.
-//  - 'both' → shown in the slideshow (/present) AND on the dashboard card
-//  - 'ppt'  → slideshow only
-//  - 'card' → dashboard card only (never appears in the presentation)
-type Visibility = 'both' | 'ppt' | 'card';
-
-function VisibilityBadges({ where }: { where: Visibility }) {
-  const inPpt = where === 'both' || where === 'ppt';
-  const inCard = where === 'both' || where === 'card';
-  return (
-    <span className="inline-flex items-center gap-1">
-      {inPpt && (
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-brand/10 text-brand normal-case tracking-normal">
-          <span className="w-1 h-1 rounded-full bg-brand" />
-          Slideshow
-        </span>
-      )}
-      {inCard && (
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-neutral-100 text-neutral-500 normal-case tracking-normal">
-          <span className="w-1 h-1 rounded-full bg-neutral-400" />
-          Card
-        </span>
-      )}
-    </span>
-  );
-}
-
-function Field({ label, where, children }: { label: string; where?: Visibility; children: React.ReactNode }) {
-  return (
-    <div>
-      <div className="flex items-center justify-between gap-2 mb-1">
-        <Label>{label}</Label>
-        {where && <VisibilityBadges where={where} />}
-      </div>
-      {children}
-    </div>
-  );
-}
-
-const inputCls =
-  'w-full px-3 py-2 rounded-lg border border-neutral-200 bg-white text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent';
+const inputCls = 'w-full px-3 py-2 rounded-lg border border-neutral-200 bg-white text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent';
 const textareaCls = `${inputCls} resize-y min-h-[80px]`;
 
-// ── Sub-case row ──────────────────────────────────────────────────────────────
-
-function SubCaseRow({
-  sc, idx, expanded, onToggleExpand, onUpdate, onRemove,
-}: {
-  sc: SubCaseFormState; idx: number; expanded: boolean;
-  onToggleExpand: () => void;
-  onUpdate: (key: keyof SubCaseFormState, value: string) => void;
-  onRemove: () => void;
-}) {
+function Label({ children }: { children: React.ReactNode }) {
+  return <label className="block text-xs font-semibold text-neutral-500 uppercase tracking-wide mb-1">{children}</label>;
+}
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return <div><Label>{label}</Label>{children}</div>;
+}
+function Banner({ msg }: { msg: { type: 'ok' | 'error'; text: string } | null }) {
+  if (!msg) return null;
   return (
-    <div className="rounded-lg border border-neutral-200 overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-2.5 bg-neutral-50">
-        <span className="w-5 h-5 rounded-full bg-neutral-200 text-neutral-600 text-xs font-bold flex items-center justify-center flex-shrink-0">
-          {idx + 1}
-        </span>
-        <span className="text-sm font-medium text-neutral-700 flex-1 truncate min-w-0">
-          {sc.title || <span className="text-neutral-400 italic">Untitled sub-case</span>}
-        </span>
-        <button type="button" onClick={onRemove} className="p-1 rounded text-neutral-400 hover:text-red-500 transition-colors flex-shrink-0" title="Remove">
-          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-            <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6" />
-            <path d="M10 11v6M14 11v6M9 6V4h6v2" />
-          </svg>
-        </button>
-        <button type="button" onClick={onToggleExpand} className="p-1 rounded text-neutral-400 hover:text-neutral-600 transition-colors flex-shrink-0">
-          <svg viewBox="0 0 24 24" className={`h-4 w-4 transition-transform ${expanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2">
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </button>
-      </div>
-      {expanded && (
-        <div className="p-4 space-y-4 border-t border-neutral-100">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="Title" where="both">
-              <input className={inputCls} value={sc.title} onChange={e => onUpdate('title', e.target.value)} placeholder="Sub-case title…" />
-            </Field>
-            <Field label="ID (auto-generated)">
-              <input className={inputCls} value={sc.id} onChange={e => onUpdate('id', e.target.value)} placeholder="sub-case-id" />
-            </Field>
-          </div>
-          <Field label="Summary" where="both">
-            <textarea className={textareaCls} style={{ minHeight: 56 }} value={sc.summary} onChange={e => onUpdate('summary', e.target.value)} placeholder="One-line description…" />
-          </Field>
-          <Field label="Description" where="card">
-            <textarea className={textareaCls} style={{ minHeight: 100 }} value={sc.description} onChange={e => onUpdate('description', e.target.value)} placeholder="Full description…" />
-          </Field>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="Business Value (one per line)" where="card">
-              <textarea className={textareaCls} value={sc.businessValue} onChange={e => onUpdate('businessValue', e.target.value)} placeholder={'Reduces manual work\nSaves time'} />
-            </Field>
-            <Field label="Tech Stack (one per line)" where="card">
-              <textarea className={textareaCls} value={sc.techStack} onChange={e => onUpdate('techStack', e.target.value)} placeholder={'Voice AI\nNLP'} />
-            </Field>
-          </div>
-        </div>
-      )}
+    <div className={`px-4 py-3 rounded-lg text-sm font-medium ${msg.type === 'ok' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+      {msg.text}
     </div>
   );
 }
 
-// ── Sub-cases section ─────────────────────────────────────────────────────────
-
-function SubCasesSection({
-  hasSubCases, subCases, onToggle, onChange, onDirty,
-}: {
-  hasSubCases: boolean; subCases: SubCaseFormState[];
-  onToggle: () => void; onChange: (next: SubCaseFormState[]) => void; onDirty: () => void;
-}) {
-  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
-
-  function addSubCase() {
-    const next = [...subCases, blankSubCase()];
-    onChange(next);
-    setExpandedIdx(next.length - 1);
-    onDirty();
-  }
-
-  function updateSubCaseField(idx: number, key: keyof SubCaseFormState, value: string) {
-    const sc = { ...subCases[idx], [key]: value };
-    if (key === 'title' && !subCases[idx].id) sc.id = slugify(value);
-    onChange(subCases.map((s, i) => (i === idx ? sc : s)));
-    onDirty();
-  }
-
-  function removeSubCase(idx: number) {
-    if (!confirm('Remove this sub-case?')) return;
-    onChange(subCases.filter((_, i) => i !== idx));
-    if (expandedIdx === idx) setExpandedIdx(null);
-    else if (expandedIdx !== null && expandedIdx > idx) setExpandedIdx(expandedIdx - 1);
-    onDirty();
-  }
-
-  return (
-    <div className="border-t border-neutral-100 pt-5">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <div className="text-sm font-semibold text-neutral-900">Sub-cases</div>
-          <div className="text-xs text-neutral-500 mt-0.5">Group related use cases under this entry</div>
-        </div>
-        <button
-          type="button"
-          onClick={() => { onToggle(); onDirty(); }}
-          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${hasSubCases ? 'bg-brand' : 'bg-neutral-200'}`}
-        >
-          <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${hasSubCases ? 'translate-x-6' : 'translate-x-1'}`} />
-        </button>
-      </div>
-      {hasSubCases && (
-        <div className="space-y-2">
-          {subCases.map((sc, idx) => (
-            <SubCaseRow
-              key={idx} sc={sc} idx={idx}
-              expanded={expandedIdx === idx}
-              onToggleExpand={() => setExpandedIdx(expandedIdx === idx ? null : idx)}
-              onUpdate={(key, val) => updateSubCaseField(idx, key, val)}
-              onRemove={() => removeSubCase(idx)}
-            />
-          ))}
-          <button
-            type="button" onClick={addSubCase}
-            className="w-full py-2.5 rounded-lg border border-dashed border-neutral-300 text-sm text-neutral-500 hover:border-brand hover:text-brand transition-colors flex items-center justify-center gap-1.5"
-          >
-            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-            Add Sub-case
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Tracker management tab ────────────────────────────────────────────────────
-
-function TrackersTab({
-  trackers,
-  onCreate,
-  onUpdate,
-  onDelete,
-  onRefresh,
-  saving,
-}: {
-  trackers: Tracker[];
-  onCreate: (title: string, description?: string) => Promise<void>;
-  onUpdate: (id: string, title: string, description?: string) => Promise<void>;
-  onDelete: (id: string) => Promise<void>;
-  onRefresh: () => Promise<TrackerData>;
-  saving: boolean;
-}) {
-  const [list, setList] = useState<Tracker[]>(trackers);
-  const [editId, setEditId] = useState<string | 'new' | null>(null);
-  const [titleInput, setTitleInput] = useState('');
-  const [descInput, setDescInput] = useState('');
-  const [dirty, setDirty] = useState(false);
-  const [msg, setMsg] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
-
-  // Keep list in sync when parent data changes
-  useEffect(() => { setList(trackers); }, [trackers]);
-
-  // Re-fetch before opening the editor so we're never editing against a
-  // tracker list that went stale while this admin's tab sat idle.
-  async function startEdit(t: Tracker) {
-    setMsg(null);
-    await onRefresh().catch(() => {});
-    setEditId(t.id);
-    setTitleInput(t.title);
-    setDescInput(t.description ?? '');
-    setDirty(false);
-  }
-
-  async function startNew() {
-    setMsg(null);
-    await onRefresh().catch(() => {});
-    setEditId('new');
-    setTitleInput('');
-    setDescInput('');
-    setDirty(false);
-  }
-
-  async function handleSaveTracker() {
-    if (!titleInput.trim()) return;
-    try {
-      // Re-fetch immediately before saving so the id-collision / existence
-      // checks below run against the latest data, not what loaded earlier.
-      const fresh = await onRefresh();
-      if (editId === 'new') {
-        const id = slugify(titleInput);
-        if (fresh.trackers.some(t => t.id === id)) {
-          setMsg({ type: 'error', text: `A tracker with id "${id}" already exists.` });
-          return;
-        }
-        await onCreate(titleInput.trim(), descInput.trim() || undefined);
-      } else {
-        if (!fresh.trackers.some(t => t.id === editId)) {
-          setMsg({ type: 'error', text: 'This tracker no longer exists — someone else may have deleted it.' });
-          setEditId(null);
-          return;
-        }
-        await onUpdate(editId, titleInput.trim(), descInput.trim() || undefined);
-      }
-      setEditId(null);
-      setDirty(false);
-      setMsg({ type: 'ok', text: 'Tracker saved.' });
-    } catch (e: any) {
-      setMsg({ type: 'error', text: e.message ?? 'Save failed.' });
-    }
-  }
-
-  async function handleDelete(id: string) {
-    const t = list.find(x => x.id === id);
-    if (!t) return;
-    if (t.usecases.length > 0 && !confirm(`"${t.title}" has ${t.usecases.length} use cases. Delete anyway?`)) return;
-    try {
-      await onDelete(id);
-      if (editId === id) setEditId(null);
-      setMsg({ type: 'ok', text: 'Tracker deleted.' });
-    } catch (e: any) {
-      setMsg({ type: 'error', text: e.message ?? 'Delete failed.' });
-    }
-  }
-
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* Sidebar */}
-      <div className="lg:col-span-1">
-        <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-100">
-            <span className="text-sm font-semibold text-neutral-700">{list.length} Trackers</span>
-            <button
-              onClick={startNew}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand/90 transition-colors"
-            >
-              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-              Add
-            </button>
-          </div>
-          {editId === 'new' && (
-            <div className="px-4 py-3 border-b border-neutral-100 bg-brand/5 border-l-2 border-l-brand">
-              <div className="text-sm font-semibold text-brand">New Tracker</div>
-              <div className="text-xs text-neutral-500 mt-0.5">Unsaved</div>
-            </div>
-          )}
-          {list.map(t => (
-            <div
-              key={t.id}
-              className={`flex items-center gap-2 px-4 py-3 border-b border-neutral-100 last:border-b-0 cursor-pointer hover:bg-neutral-50 transition-colors ${editId === t.id ? 'bg-brand/5 border-l-2 border-l-brand' : ''}`}
-              onClick={() => startEdit(t)}
-            >
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-neutral-900 truncate">{t.title}</div>
-                <div className="text-xs text-neutral-400 mt-0.5">{t.usecases.length} use cases</div>
-              </div>
-              <button
-                onClick={e => { e.stopPropagation(); handleDelete(t.id); }}
-                className="p-1 rounded text-neutral-300 hover:text-red-500 transition-colors flex-shrink-0"
-              >
-                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6" />
-                </svg>
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Edit form */}
-      <div className="lg:col-span-2">
-        {msg && (
-          <div className={`px-4 py-3 rounded-lg text-sm font-medium mb-4 ${msg.type === 'ok' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
-            {msg.text}
-          </div>
-        )}
-        {editId === null ? (
-          <div className="h-48 flex items-center justify-center text-neutral-400 rounded-xl border border-dashed border-neutral-200">
-            <p className="text-sm">Select a tracker to edit, or click Add</p>
-          </div>
-        ) : (
-          <div className="bg-white rounded-xl border border-neutral-200 p-4 sm:p-6 space-y-4">
-            <Field label="Tracker Name">
-              <input
-                className={inputCls}
-                value={titleInput}
-                onChange={e => { setTitleInput(e.target.value); setDirty(true); }}
-                placeholder="e.g. Automation Processes"
-              />
-            </Field>
-            <Field label="Description (optional)">
-              <textarea
-                className={textareaCls}
-                style={{ minHeight: 72 }}
-                value={descInput}
-                onChange={e => { setDescInput(e.target.value); setDirty(true); }}
-                placeholder="Brief description shown on the tracker page…"
-              />
-            </Field>
-            {editId !== 'new' && (
-              <p className="text-xs text-neutral-400">
-                ID: <span className="font-mono">{editId}</span> · {list.find(t => t.id === editId)?.usecases.length ?? 0} use cases
-              </p>
-            )}
-            <div className="flex justify-end pt-2 border-t border-neutral-100">
-              <button
-                onClick={handleSaveTracker}
-                disabled={saving || !titleInput.trim() || !dirty}
-                className="px-6 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {saving ? 'Saving…' : editId === 'new' ? 'Create Tracker' : 'Save Tracker'}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ── Auth modal ────────────────────────────────────────────────────────────────
-
-function AuthModal({ onVerified }: { onVerified: (key: string) => void }) {
-  const [input, setInput] = useState('');
-  const [error, setError] = useState('');
+// ── Auth screen ───────────────────────────────────────────────────────────────
+function SignIn() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState('');
 
-  useEffect(() => { inputRef.current?.focus(); }, []);
-
-  async function handleSubmit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!input.trim()) return;
-    setLoading(true);
-    setError('');
-    try {
-      const res = await fetch('/api/admin/verify', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${input}` },
-      });
-      if (res.ok) {
-        onVerified(input);
-      } else if (res.status === 401) {
-        setError('Incorrect admin key. Please try again.');
-        setInput('');
-        inputRef.current?.focus();
-      } else {
-        const text = await res.text();
-        setError(text || 'Server error. Check that ADMIN_SECRET is set in Vercel.');
-      }
-    } catch {
-      setError('Could not reach the server. Check your connection.');
-    }
+    setLoading(true); setError('');
+    const { error } = await getSupabase().auth.signInWithPassword({ email: email.trim(), password });
+    if (error) setError(error.message);
     setLoading(false);
   }
 
@@ -531,23 +64,19 @@ function AuthModal({ onVerified }: { onVerified: (key: string) => void }) {
               <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
             </svg>
           </div>
-          <h2 className="text-xl font-bold text-neutral-900 mb-1">Admin Access</h2>
-          <p className="text-sm text-neutral-500 mb-6">Enter your admin key to manage trackers and use cases.</p>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <Label>Admin Key</Label>
-              <input ref={inputRef} type="password" value={input} onChange={e => setInput(e.target.value)} placeholder="Enter admin key…" autoComplete="off" className={inputCls} />
-            </div>
-            {error && (
-              <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-red-50 border border-red-200">
-                <svg viewBox="0 0 24 24" className="h-4 w-4 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
-                </svg>
-                <p className="text-xs text-red-700">{error}</p>
-              </div>
-            )}
-            <button type="submit" disabled={loading || !input.trim()} className="w-full py-2.5 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-              {loading ? 'Verifying…' : 'Unlock'}
+          <h2 className="text-xl font-bold text-neutral-900 mb-1">Manage Trackers</h2>
+          <p className="text-sm text-neutral-500 mb-6">Sign in with your NuAig account.</p>
+          <form onSubmit={submit} className="space-y-4">
+            <Field label="Email">
+              <input type="email" value={email} onChange={e => setEmail(e.target.value)} className={inputCls} autoComplete="email" />
+            </Field>
+            <Field label="Password">
+              <input type="password" value={password} onChange={e => setPassword(e.target.value)} className={inputCls} autoComplete="current-password" />
+            </Field>
+            {error && <p className="text-xs text-red-600">{error}</p>}
+            <button type="submit" disabled={loading || !email || !password}
+              className="w-full py-2.5 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand/90 transition-colors disabled:opacity-40">
+              {loading ? 'Signing in…' : 'Sign In'}
             </button>
           </form>
         </div>
@@ -556,432 +85,411 @@ function AuthModal({ onVerified }: { onVerified: (key: string) => void }) {
   );
 }
 
-// ── Main panel ────────────────────────────────────────────────────────────────
+// ── Item editor (type-aware) ──────────────────────────────────────────────────
+type ItemForm = {
+  id: string | 'new';
+  slug: string; title: string; summary: string; categoryId: string;
+  // usecases / automation shared
+  description: string; businessValue: string; techStack: string;
+  // usecases only
+  category: string; limitations: string; complianceFlags: string; owner: string; lastUpdated: string;
+  // integrations only
+  tag: string; url: string;
+  // automation only
+  steps: { id: string; title: string; desc: string; kind: AutomationStepKind; next: string[] }[];
+};
 
-type AdminTab = 'usecases' | 'trackers';
+function emptyItemForm(): ItemForm {
+  return {
+    id: 'new', slug: '', title: '', summary: '', categoryId: '',
+    description: '', businessValue: '', techStack: '',
+    category: 'Resident Care', limitations: '', complianceFlags: '', owner: 'NuAig',
+    lastUpdated: new Date().toISOString().split('T')[0],
+    tag: '', url: '', steps: [],
+  };
+}
 
-export default function AdminPanel() {
-  const [authKey, setAuthKey] = useState<string | null>(null);
-  const [trackerData, setTrackerData] = useState<TrackerData>({ trackers: [] });
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
-  const [activeTab, setActiveTab] = useState<AdminTab>('usecases');
+function itemToForm(row: ItemRow): ItemForm {
+  const d = row.data ?? {};
+  return {
+    id: row.id, slug: row.slug, title: row.title, summary: row.summary ?? '', categoryId: row.category_id ?? '',
+    description: d.description ?? '', businessValue: joinLines(d.businessValue), techStack: joinLines(d.techStack),
+    category: d.category ?? 'Resident Care', limitations: joinLines(d.limitations),
+    complianceFlags: joinLines(d.complianceFlags), owner: d.owner ?? 'NuAig',
+    lastUpdated: d.lastUpdated ?? new Date().toISOString().split('T')[0],
+    tag: d.tag ?? '', url: d.url ?? '',
+    steps: (d.steps ?? []).map((s: any) => ({ id: s.id, title: s.title, desc: s.desc ?? '', kind: s.kind ?? 'action', next: s.next ?? [] })),
+  };
+}
 
-  const [selectedId, setSelectedId] = useState<string | 'new' | null>(null);
-  const [form, setForm] = useState<FormState>(blankForm(''));
-  const [dirty, setDirty] = useState(false);
-  const [selectedTrackerId, setSelectedTrackerId] = useState('');
+function formToData(f: ItemForm, type: TrackerType): any {
+  if (type === 'integrations') return { tag: f.tag || undefined, url: f.url || undefined };
+  if (type === 'automation') return {
+    description: f.description, businessValue: lines(f.businessValue), techStack: lines(f.techStack),
+    steps: f.steps.map(s => ({ id: s.id || slugify(s.title), title: s.title, desc: s.desc || undefined, kind: s.kind, next: s.next })),
+  };
+  return {
+    category: f.category, description: f.description,
+    businessValue: lines(f.businessValue), techStack: lines(f.techStack),
+    limitations: lines(f.limitations), complianceFlags: lines(f.complianceFlags),
+    owner: f.owner || undefined, lastUpdated: f.lastUpdated || undefined,
+  };
+}
 
-  const usecases = trackerData.trackers.flatMap(t => t.usecases);
-  const defaultTrackerId = trackerData.trackers[0]?.id ?? '';
-  const activeTracker =
-    trackerData.trackers.find(t => t.id === selectedTrackerId) ?? trackerData.trackers[0];
-  const visibleUsecases = activeTracker?.usecases ?? [];
-
-  // Once data loads (or trackers change), default the filter to the first tracker
-  // and keep it pointing at a tracker that still exists.
-  useEffect(() => {
-    if (trackerData.trackers.length === 0) return;
-    if (!trackerData.trackers.some(t => t.id === selectedTrackerId)) {
-      setSelectedTrackerId(trackerData.trackers[0].id);
-    }
-  }, [trackerData, selectedTrackerId]);
-
-  function handleVerified(key: string) {
-    setAuthKey(key);
-    loadData();
+function StepsEditor({ steps, onChange }: { steps: ItemForm['steps']; onChange: (s: ItemForm['steps']) => void }) {
+  function update(idx: number, patch: Partial<ItemForm['steps'][number]>) {
+    onChange(steps.map((s, i) => (i === idx ? { ...s, ...patch } : s)));
   }
-
-  // Fetches the latest data from the blob and syncs it into state. Returns
-  // the fresh data so callers that need it *right now* (not after the next
-  // render) don't have to read back through the trackerData state variable.
-  async function refreshData(): Promise<TrackerData> {
-    const data: TrackerData = await fetch('/api/usecases', { cache: 'no-store' }).then(r => r.json());
-    setTrackerData(data);
-    return data;
+  function add() {
+    onChange([...steps, { id: `step-${steps.length + 1}`, title: '', desc: '', kind: 'action', next: [] }]);
   }
-
-  async function loadData() {
-    setLoading(true);
-    try {
-      await refreshData();
-    } catch {
-      setMessage({ type: 'error', text: 'Failed to load data.' });
-    }
-    setLoading(false);
+  function remove(idx: number) {
+    const removed = steps[idx].id;
+    onChange(steps.filter((_, i) => i !== idx).map(s => ({ ...s, next: s.next.filter(n => n !== removed) })));
   }
-
-  // Re-fetch before opening the edit modal so we're never editing a use case
-  // against data that went stale while this admin's tab sat idle.
-  async function selectCase(uc: UseCase) {
-    if (dirty && !confirm('You have unsaved changes. Discard them?')) return;
-    setMessage(null);
-    const fresh = await refreshData().catch(() => trackerData);
-    const freshUc = fresh.trackers.flatMap(t => t.usecases).find(u => u.id === uc.id);
-    if (!freshUc) {
-      setMessage({ type: 'error', text: 'This use case no longer exists — someone else may have deleted it.' });
-      return;
-    }
-    const trackerId = fresh.trackers.find(t => t.usecases.some(u => u.id === uc.id))?.id ?? fresh.trackers[0]?.id ?? '';
-    setSelectedId(freshUc.id);
-    setForm(toForm(freshUc, trackerId));
-    setDirty(false);
-  }
-
-  // Opens the blank form immediately (nothing stale to show yet), and
-  // refreshes in the background so the use-case grid behind the modal — and
-  // the tracker dropdown inside it — pick up anything another admin just
-  // added, without delaying the modal itself.
-  function startNew() {
-    if (dirty && !confirm('You have unsaved changes. Discard them?')) return;
-    setMessage(null);
-    setSelectedId('new');
-    setForm(blankForm(selectedTrackerId || defaultTrackerId));
-    setDirty(false);
-    refreshData().catch(() => {});
-  }
-
-  function closeForm() {
-    if (dirty && !confirm('You have unsaved changes. Discard them?')) return;
-    setSelectedId(null);
-    setDirty(false);
-    setMessage(null);
-  }
-
-  // Lock body scroll while the edit modal is open
-  useEffect(() => {
-    if (selectedId === null) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prev; };
-  }, [selectedId]);
-
-  function setField<K extends keyof FormState>(key: K, value: FormState[K]) {
-    setForm(prev => {
-      const next = { ...prev, [key]: value };
-      if (key === 'title' && selectedId === 'new' && !dirty) {
-        next.id = slugify(value as string);
-      }
-      return next;
-    });
-    setDirty(true);
-  }
-
-  // Sends one targeted operation; the server reads the latest blob, applies
-  // just this change, and writes the merged result back — so two admins
-  // editing concurrently merge instead of one clobbering the other.
-  async function persistOp(op: TrackerOp): Promise<TrackerData> {
-    const res = await fetch('/api/usecases', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authKey}` },
-      body: JSON.stringify(op),
-    });
-    if (!res.ok) {
-      const txt = await res.text();
-      throw new Error(txt === 'Unauthorized' ? 'Wrong admin key.' : txt);
-    }
-    return res.json();
-  }
-
-  async function handleSave() {
-    setSaving(true);
-    setMessage(null);
-    try {
-      // Re-fetch immediately before saving so the id-collision check and
-      // tracker choice below reflect the latest data, not what loaded when
-      // the modal was opened.
-      const fresh = await refreshData();
-      const uc = fromForm(form);
-      const freshUsecases = fresh.trackers.flatMap(t => t.usecases);
-      const targetTrackerId = fresh.trackers.some(t => t.id === form.trackerId)
-        ? form.trackerId
-        : (fresh.trackers[0]?.id ?? '');
-
-      if (selectedId === 'new' && freshUsecases.some(u => u.id === uc.id)) {
-        setMessage({ type: 'error', text: `ID "${uc.id}" already exists.` });
-        setSaving(false);
-        return;
-      }
-      if (!targetTrackerId) {
-        setMessage({ type: 'error', text: 'No tracker available to save into.' });
-        setSaving(false);
-        return;
-      }
-
-      const op: TrackerOp =
-        selectedId === 'new'
-          ? { type: 'addUsecase', trackerId: targetTrackerId, usecase: uc }
-          : { type: 'updateUsecase', usecaseId: selectedId, trackerId: targetTrackerId, usecase: uc };
-
-      const next = await persistOp(op);
-      setTrackerData(next);
-      setSelectedId(uc.id);
-      setSelectedTrackerId(targetTrackerId);
-      setDirty(false);
-      setMessage({ type: 'ok', text: 'Saved! Changes are live immediately.' });
-    } catch (e: any) {
-      setMessage({ type: 'error', text: e.message ?? 'Save failed.' });
-    }
-    setSaving(false);
-  }
-
-  async function handleDelete() {
-    const target = usecases.find(u => u.id === selectedId);
-    if (!target || !confirm(`Delete "${target.title}"? This cannot be undone.`)) return;
-    setSaving(true);
-    setMessage(null);
-    try {
-      const next = await persistOp({ type: 'deleteUsecase', usecaseId: selectedId as string });
-      setTrackerData(next);
-      setSelectedId(null);
-      setDirty(false);
-      setMessage({ type: 'ok', text: 'Deleted successfully.' });
-    } catch (e: any) {
-      setMessage({ type: 'error', text: e.message ?? 'Delete failed.' });
-    }
-    setSaving(false);
-  }
-
-  async function handleCreateTracker(title: string, description?: string) {
-    const tracker: Tracker = { id: slugify(title), title, description, usecases: [] };
-    const next = await persistOp({ type: 'addTracker', tracker });
-    setTrackerData(next);
-  }
-
-  async function handleUpdateTracker(id: string, title: string, description?: string) {
-    const next = await persistOp({ type: 'updateTracker', trackerId: id, title, description });
-    setTrackerData(next);
-  }
-
-  async function handleDeleteTracker(id: string) {
-    const next = await persistOp({ type: 'deleteTracker', trackerId: id });
-    setTrackerData(next);
-  }
-
-  // ── Render ──────────────────────────────────────────────────────────────────
-
-  if (!authKey) {
-    return <AuthModal onVerified={handleVerified} />;
-  }
-
-  const TAB_CLS = (t: AdminTab) =>
-    `px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
-      activeTab === t
-        ? 'bg-brand text-white'
-        : 'text-neutral-600 hover:bg-neutral-100'
-    }`;
-
-  const editCard = (
-    <div className="bg-white rounded-xl border border-neutral-200 p-4 sm:p-6 space-y-5">
-      {/* Legend: explains what the badges next to each field mean */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg bg-neutral-50 border border-neutral-100 px-3 py-2.5 text-xs text-neutral-500">
-        <span className="font-semibold text-neutral-600">Where each field appears:</span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-brand/10 text-brand">
-            <span className="w-1 h-1 rounded-full bg-brand" />Slideshow
-          </span>
-          shown in Present mode
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-neutral-100 text-neutral-500">
-            <span className="w-1 h-1 rounded-full bg-neutral-400" />Card
-          </span>
-          shown on the dashboard card
-        </span>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Field label="Title" where="both">
-          <input className={inputCls} value={form.title} onChange={e => setField('title', e.target.value)} placeholder="e.g. Fall Detection AI" />
-        </Field>
-        <Field label="ID (auto-generated)">
-          <input className={inputCls} value={form.id} onChange={e => setField('id', e.target.value)} placeholder="fall-detection-ai" />
-        </Field>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Field label="Tracker">
-          <select className={inputCls} value={form.trackerId} onChange={e => setField('trackerId', e.target.value)}>
-            {trackerData.trackers.map(t => (
-              <option key={t.id} value={t.id}>{t.title}</option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Category" where="both">
-          <select className={inputCls} value={form.category} onChange={e => setField('category', e.target.value)}>
-            {CATEGORIES.map(c => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
-        </Field>
-      </div>
-
-      <Field label="Summary" where="card">
-        <textarea className={textareaCls} style={{ minHeight: 60 }} value={form.summary} onChange={e => setField('summary', e.target.value)} placeholder="Short sentence shown on the card…" />
-      </Field>
-
-      <Field label="Description" where="both">
-        <textarea className={textareaCls} style={{ minHeight: 120 }} value={form.description} onChange={e => setField('description', e.target.value)} placeholder="Full explanation of the use case…" />
-      </Field>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Field label="Business Value (one per line)" where="both">
-          <textarea className={textareaCls} value={form.businessValue} onChange={e => setField('businessValue', e.target.value)} placeholder={'Reduce admin overhead\nFaster care decisions'} />
-        </Field>
-        <Field label="Tech Stack (one per line)" where="both">
-          <textarea className={textareaCls} value={form.techStack} onChange={e => setField('techStack', e.target.value)} placeholder={'Claude AI\nEMR Integration'} />
-        </Field>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Field label="Limitations (one per line)" where="card">
-          <textarea className={textareaCls} value={form.limitations} onChange={e => setField('limitations', e.target.value)} placeholder={'Requires EMR integration\nNeeds clinical review'} />
-        </Field>
-        <Field label="Compliance Flags (one per line)" where="card">
-          <textarea className={textareaCls} value={form.complianceFlags} onChange={e => setField('complianceFlags', e.target.value)} placeholder={'HIPAA\nPHI Handling'} />
-        </Field>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Field label="Owner" where="card">
-          <input className={inputCls} value={form.owner} onChange={e => setField('owner', e.target.value)} placeholder="NuAig" />
-        </Field>
-        <Field label="Last Updated" where="card">
-          <input type="date" className={inputCls} value={form.lastUpdated} onChange={e => setField('lastUpdated', e.target.value)} />
-        </Field>
-      </div>
-
-      <SubCasesSection
-        hasSubCases={form.hasSubCases}
-        subCases={form.subCases}
-        onToggle={() => setForm(prev => ({ ...prev, hasSubCases: !prev.hasSubCases }))}
-        onChange={next => setForm(prev => ({ ...prev, subCases: next }))}
-        onDirty={() => setDirty(true)}
-      />
-
-      {message && (
-        <div className={`px-4 py-3 rounded-lg text-sm font-medium ${message.type === 'ok' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
-          {message.text}
-        </div>
-      )}
-
-      <div className="flex items-center justify-between pt-2 border-t border-neutral-100">
-        <div>
-          {selectedId !== 'new' && (
-            <button onClick={handleDelete} disabled={saving} className="px-4 py-2 rounded-lg border border-red-200 text-red-600 text-sm font-semibold hover:bg-red-50 transition-colors disabled:opacity-50">
-              Delete
+  return (
+    <div className="space-y-3">
+      {steps.map((s, idx) => (
+        <div key={idx} className="rounded-lg border border-neutral-200 p-3 space-y-3 bg-neutral-50/60">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-neutral-500 w-5">{idx + 1}</span>
+            <input className={inputCls} placeholder="Step title" value={s.title}
+              onChange={e => update(idx, { title: e.target.value, id: s.id || slugify(e.target.value) })} />
+            <select className={`${inputCls} w-36`} value={s.kind} onChange={e => update(idx, { kind: e.target.value as AutomationStepKind })}>
+              <option value="trigger">Trigger</option><option value="action">Action</option>
+              <option value="branch">Branch</option><option value="end">End</option>
+            </select>
+            <button type="button" onClick={() => remove(idx)} className="p-1.5 rounded text-neutral-400 hover:text-red-500" title="Remove">
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6" /></svg>
             </button>
-          )}
+          </div>
+          <input className={inputCls} placeholder="Short description (optional)" value={s.desc} onChange={e => update(idx, { desc: e.target.value })} />
+          <div>
+            <div className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wide mb-1.5">Leads to</div>
+            <div className="flex flex-wrap gap-2">
+              {steps.filter((_, i) => i !== idx).map(other => {
+                const on = s.next.includes(other.id);
+                return (
+                  <button key={other.id} type="button"
+                    onClick={() => update(idx, { next: on ? s.next.filter(n => n !== other.id) : [...s.next, other.id] })}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${on ? 'bg-brand text-white border-brand' : 'bg-white text-neutral-600 border-neutral-200 hover:border-brand'}`}>
+                    {other.title || other.id}
+                  </button>
+                );
+              })}
+              {steps.length <= 1 && <span className="text-xs text-neutral-400 italic">Add more steps to connect them.</span>}
+            </div>
+          </div>
         </div>
-        <button
-          onClick={handleSave}
-          disabled={saving || !dirty}
-          className="px-6 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {saving ? 'Saving…' : selectedId === 'new' ? 'Create Use Case' : 'Save Changes'}
-        </button>
+      ))}
+      <button type="button" onClick={add} className="w-full py-2.5 rounded-lg border border-dashed border-neutral-300 text-sm text-neutral-500 hover:border-brand hover:text-brand transition-colors">
+        + Add Step
+      </button>
+    </div>
+  );
+}
+
+function ItemEditor({
+  type, form, categories, onChange, onSave, onDelete, onClose, saving,
+}: {
+  type: TrackerType; form: ItemForm; categories: CategoryRow[];
+  onChange: (f: ItemForm) => void; onSave: () => void; onDelete: () => void; onClose: () => void; saving: boolean;
+}) {
+  const set = <K extends keyof ItemForm>(k: K, v: ItemForm[K]) => {
+    const next = { ...form, [k]: v };
+    if (k === 'title' && form.id === 'new') next.slug = slugify(v as string);
+    onChange(next);
+  };
+  const noun = type === 'integrations' ? 'Integration' : type === 'automation' ? 'Process' : 'Use Case';
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col sm:items-center sm:justify-center">
+      <div className="absolute inset-0 bg-neutral-950/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative mt-auto sm:mt-0 w-full sm:max-w-3xl sm:mx-4 max-h-[92vh] sm:max-h-[90vh] flex flex-col bg-neutral-50 rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden">
+        <div className="flex-shrink-0 flex items-center justify-between px-4 sm:px-6 h-14 bg-white border-b border-neutral-100">
+          <span className="text-sm font-semibold text-neutral-900">{form.id === 'new' ? `New ${noun}` : `Edit ${noun}`}</span>
+          <button onClick={onClose} className="inline-flex items-center justify-center h-9 w-9 rounded-lg text-neutral-500 hover:bg-neutral-100">
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          </button>
+        </div>
+        <div className="overflow-y-auto p-4 sm:p-6">
+          <div className="bg-white rounded-xl border border-neutral-200 p-4 sm:p-6 space-y-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label={type === 'integrations' ? 'Platform name' : 'Title'}>
+                <input className={inputCls} value={form.title} onChange={e => set('title', e.target.value)} />
+              </Field>
+              <Field label="ID / slug">
+                <input className={inputCls} value={form.slug} onChange={e => set('slug', e.target.value)} />
+              </Field>
+            </div>
+
+            {categories.length > 0 && (
+              <Field label="Category">
+                <select className={inputCls} value={form.categoryId} onChange={e => set('categoryId', e.target.value)}>
+                  <option value="">— None —</option>
+                  {categories.map(c => <option key={c.id} value={c.id}>{c.icon ? `${c.icon} ` : ''}{c.label}</option>)}
+                </select>
+              </Field>
+            )}
+
+            <Field label={type === 'integrations' ? 'Short blurb' : 'Summary'}>
+              <textarea className={textareaCls} style={{ minHeight: 56 }} value={form.summary} onChange={e => set('summary', e.target.value)} />
+            </Field>
+
+            {type === 'integrations' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field label="Tag (e.g. EHR, Accounting)">
+                  <input className={inputCls} value={form.tag} onChange={e => set('tag', e.target.value)} />
+                </Field>
+                <Field label="Link URL (optional)">
+                  <input className={inputCls} value={form.url} onChange={e => set('url', e.target.value)} placeholder="https://…" />
+                </Field>
+              </div>
+            )}
+
+            {type === 'usecases' && (
+              <>
+                <Field label="Category label">
+                  <input className={inputCls} value={form.category} onChange={e => set('category', e.target.value)} list="uc-cats" />
+                  <datalist id="uc-cats">
+                    {['Resident Care', 'Operations & Admin', 'Staff & Workforce', 'Sales & Admissions', 'Quality & Compliance', 'Family & Community'].map(c => <option key={c} value={c} />)}
+                  </datalist>
+                </Field>
+                <Field label="Description">
+                  <textarea className={textareaCls} style={{ minHeight: 100 }} value={form.description} onChange={e => set('description', e.target.value)} />
+                </Field>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Field label="Business Value (one per line)"><textarea className={textareaCls} value={form.businessValue} onChange={e => set('businessValue', e.target.value)} /></Field>
+                  <Field label="Tech Stack (one per line)"><textarea className={textareaCls} value={form.techStack} onChange={e => set('techStack', e.target.value)} /></Field>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Field label="Limitations (one per line)"><textarea className={textareaCls} value={form.limitations} onChange={e => set('limitations', e.target.value)} /></Field>
+                  <Field label="Compliance Flags (one per line)"><textarea className={textareaCls} value={form.complianceFlags} onChange={e => set('complianceFlags', e.target.value)} /></Field>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Field label="Owner"><input className={inputCls} value={form.owner} onChange={e => set('owner', e.target.value)} /></Field>
+                  <Field label="Last Updated"><input type="date" className={inputCls} value={form.lastUpdated} onChange={e => set('lastUpdated', e.target.value)} /></Field>
+                </div>
+              </>
+            )}
+
+            {type === 'automation' && (
+              <>
+                <Field label="Description">
+                  <textarea className={textareaCls} style={{ minHeight: 100 }} value={form.description} onChange={e => set('description', e.target.value)} />
+                </Field>
+                <Field label="Process Flow (steps)">
+                  <StepsEditor steps={form.steps} onChange={s => onChange({ ...form, steps: s })} />
+                </Field>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Field label="Business Value (one per line)"><textarea className={textareaCls} value={form.businessValue} onChange={e => set('businessValue', e.target.value)} /></Field>
+                  <Field label="Tech Stack (one per line)"><textarea className={textareaCls} value={form.techStack} onChange={e => set('techStack', e.target.value)} /></Field>
+                </div>
+              </>
+            )}
+
+            <div className="flex items-center justify-between pt-2 border-t border-neutral-100">
+              <div>{form.id !== 'new' && (
+                <button onClick={onDelete} disabled={saving} className="px-4 py-2 rounded-lg border border-red-200 text-red-600 text-sm font-semibold hover:bg-red-50 disabled:opacity-50">Delete</button>
+              )}</div>
+              <button onClick={onSave} disabled={saving || !form.title.trim()} className="px-6 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand/90 disabled:opacity-40">
+                {saving ? 'Saving…' : form.id === 'new' ? `Create ${noun}` : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
+}
+
+// ── Main panel ────────────────────────────────────────────────────────────────
+type Tab = 'content' | 'trackers' | 'users';
+
+export default function AdminPanel() {
+  const configured = isSupabaseConfigured();
+  const [session, setSession] = useState<Session | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [profile, setProfile] = useState<ProfileRow | null>(null);
+  const [tab, setTab] = useState<Tab>('content');
+  const [msg, setMsg] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const [trackers, setTrackers] = useState<TrackerRow[]>([]);
+  const [categories, setCategories] = useState<CategoryRow[]>([]);
+  const [items, setItems] = useState<ItemRow[]>([]);
+  const [editors, setEditors] = useState<ProfileRow[]>([]);
+  const [selectedTrackerId, setSelectedTrackerId] = useState('');
+  const [itemForm, setItemForm] = useState<ItemForm | null>(null);
+
+  // Auth bootstrap
+  useEffect(() => {
+    if (!configured) { setAuthReady(true); return; }
+    const sb = getSupabase();
+    sb.auth.getSession().then(({ data }) => { setSession(data.session); setAuthReady(true); });
+    const { data: sub } = sb.auth.onAuthStateChange((_e, s) => setSession(s));
+    return () => sub.subscription.unsubscribe();
+  }, [configured]);
+
+  // Load profile + data when signed in
+  useEffect(() => { if (session) void loadAll(); else { setProfile(null); setTrackers([]); } }, [session]);
+
+  async function loadAll() {
+    const sb = getSupabase();
+    const uid = session!.user.id;
+    const { data: prof } = await sb.from('profiles').select('*').eq('id', uid).single();
+    const p = (prof as ProfileRow) ?? { id: uid, role: 'editor', tracker_id: null, email: session!.user.email ?? null };
+    setProfile(p);
+
+    const [tRes, cRes, iRes] = await Promise.all([
+      sb.from('trackers').select('*').order('position'),
+      sb.from('categories').select('*').order('position'),
+      sb.from('items').select('*').order('position'),
+    ]);
+    let trs = (tRes.data as TrackerRow[]) ?? [];
+    if (p.role !== 'admin' && p.tracker_id) trs = trs.filter(t => t.id === p.tracker_id);
+    setTrackers(trs);
+    setCategories((cRes.data as CategoryRow[]) ?? []);
+    setItems((iRes.data as ItemRow[]) ?? []);
+    setSelectedTrackerId(prev => (trs.some(t => t.id === prev) ? prev : trs[0]?.id ?? ''));
+    if (p.role !== 'admin') setTab('content');
+
+    if (p.role === 'admin') {
+      const { data: eds } = await sb.from('profiles').select('*').eq('role', 'editor');
+      setEditors((eds as ProfileRow[]) ?? []);
+    }
+  }
+
+  const isAdmin = profile?.role === 'admin';
+  const activeTracker = trackers.find(t => t.id === selectedTrackerId);
+  const activeType = (activeTracker?.type ?? 'usecases') as TrackerType;
+  const trackerCats = categories.filter(c => c.tracker_id === selectedTrackerId);
+  const trackerItems = items.filter(i => i.tracker_id === selectedTrackerId);
+
+  async function accessToken() {
+    const { data } = await getSupabase().auth.getSession();
+    return data.session?.access_token ?? '';
+  }
+
+  // ── Item CRUD ──
+  function newItem() {
+    const f = emptyItemForm();
+    setItemForm(f);
+  }
+  function editItem(row: ItemRow) { setItemForm(itemToForm(row)); }
+
+  async function saveItem() {
+    if (!activeTracker || !itemForm) return;
+    setSaving(true); setMsg(null);
+    const f = itemForm;
+    const payload = {
+      tracker_id: activeTracker.id,
+      category_id: f.categoryId || null,
+      slug: f.slug || slugify(f.title),
+      title: f.title.trim(),
+      summary: f.summary,
+      data: formToData(f, activeType),
+    };
+    const sb = getSupabase();
+    let error;
+    if (f.id === 'new') {
+      const pos = Math.max(0, ...trackerItems.map(i => i.position)) + 1;
+      ({ error } = await sb.from('items').insert({ ...payload, position: pos }));
+    } else {
+      ({ error } = await sb.from('items').update(payload).eq('id', f.id));
+    }
+    if (error) { setMsg({ type: 'error', text: error.message }); setSaving(false); return; }
+    setItemForm(null);
+    await loadAll();
+    setMsg({ type: 'ok', text: 'Saved.' });
+    setSaving(false);
+  }
+
+  async function deleteItem() {
+    if (!itemForm || itemForm.id === 'new') return;
+    if (!confirm(`Delete "${itemForm.title}"?`)) return;
+    setSaving(true);
+    const { error } = await getSupabase().from('items').delete().eq('id', itemForm.id);
+    if (error) { setMsg({ type: 'error', text: error.message }); setSaving(false); return; }
+    setItemForm(null);
+    await loadAll();
+    setMsg({ type: 'ok', text: 'Deleted.' });
+    setSaving(false);
+  }
+
+  // ── Render ──
+  if (!configured) {
+    return <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800">
+      Supabase is not configured. Set <code>PUBLIC_SUPABASE_URL</code> and <code>PUBLIC_SUPABASE_ANON_KEY</code> in your environment. See <code>supabase/README.md</code>.
+    </div>;
+  }
+  if (!authReady) return <div className="text-neutral-400 text-sm">Loading…</div>;
+  if (!session) return <SignIn />;
+
+  const noun = activeType === 'integrations' ? 'integration' : activeType === 'automation' ? 'process' : 'use case';
 
   return (
     <div className="space-y-6">
-      {/* Tab bar */}
-      <div className="flex items-center gap-2">
-        <button className={TAB_CLS('usecases')} onClick={() => setActiveTab('usecases')}>Use Cases</button>
-        <button className={TAB_CLS('trackers')} onClick={() => setActiveTab('trackers')}>Trackers</button>
+      {/* Account bar */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2">
+          <button className={tabCls(tab === 'content')} onClick={() => setTab('content')}>Content</button>
+          {isAdmin && <button className={tabCls(tab === 'trackers')} onClick={() => setTab('trackers')}>Trackers</button>}
+          {isAdmin && <button className={tabCls(tab === 'users')} onClick={() => setTab('users')}>Users</button>}
+        </div>
+        <div className="ml-auto flex items-center gap-3 text-sm text-neutral-500">
+          <span>{profile?.email} · <span className="font-semibold text-neutral-700">{isAdmin ? 'Admin' : 'Editor'}</span></span>
+          <button onClick={() => getSupabase().auth.signOut()} className="px-3 py-1.5 rounded-lg border border-neutral-200 text-neutral-600 text-xs font-semibold hover:bg-neutral-50">Sign out</button>
+        </div>
       </div>
 
-      {/* Message banner (use-cases tab, only when the edit modal is closed) */}
-      {activeTab === 'usecases' && selectedId === null && message && (
-        <div className={`px-4 py-3 rounded-lg text-sm font-medium ${message.type === 'ok' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
-          {message.text}
-        </div>
-      )}
+      {tab !== 'users' && <Banner msg={msg} />}
 
-      {activeTab === 'trackers' ? (
-        <TrackersTab
-          trackers={trackerData.trackers}
-          onCreate={handleCreateTracker}
-          onUpdate={handleUpdateTracker}
-          onDelete={handleDeleteTracker}
-          onRefresh={refreshData}
-          saving={saving}
-        />
-      ) : (
+      {tab === 'content' && (
         <div>
-          {/* Toolbar: pick a tracker, then work on just its use cases */}
           <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-5">
             <div className="flex-1 min-w-0 sm:max-w-xs">
               <Label>Tracker</Label>
-              <select
-                className={inputCls}
-                value={activeTracker?.id ?? ''}
-                onChange={e => setSelectedTrackerId(e.target.value)}
-                disabled={trackerData.trackers.length === 0}
-              >
-                {trackerData.trackers.length === 0 ? (
-                  <option value="">No trackers yet</option>
-                ) : (
-                  trackerData.trackers.map(t => (
-                    <option key={t.id} value={t.id}>{t.title} ({t.usecases.length})</option>
-                  ))
-                )}
+              <select className={inputCls} value={selectedTrackerId} onChange={e => setSelectedTrackerId(e.target.value)} disabled={trackers.length === 0}>
+                {trackers.length === 0 ? <option value="">No trackers</option> :
+                  trackers.map(t => <option key={t.id} value={t.id}>{t.title} · {t.type}</option>)}
               </select>
             </div>
-            <button
-              onClick={startNew}
-              disabled={trackerData.trackers.length === 0}
-              className="flex-shrink-0 inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-              Add Use Case
-            </button>
+            {activeTracker && (
+              <button onClick={newItem} className="flex-shrink-0 inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand/90">
+                + Add {noun}
+              </button>
+            )}
           </div>
+
+          {activeTracker && (activeType === 'integrations' || activeType === 'automation') && (
+            <CategoryManager
+              tracker={activeTracker} categories={trackerCats} saving={saving}
+              onChanged={loadAll} setSaving={setSaving} setMsg={setMsg}
+            />
+          )}
 
           <div className="text-xs text-neutral-400 mb-4 font-medium">
-            {loading
-              ? 'Loading…'
-              : `${visibleUsecases.length} use case${visibleUsecases.length === 1 ? '' : 's'} in ${activeTracker?.title ?? 'this tracker'}`}
+            {trackerItems.length} {noun}{trackerItems.length === 1 ? '' : 's'} in {activeTracker?.title ?? 'this tracker'}
           </div>
 
-          {/* Full-width list of the selected tracker's use cases */}
-          {!loading && visibleUsecases.length === 0 ? (
-            <div className="h-56 flex items-center justify-center text-neutral-400 rounded-xl border border-dashed border-neutral-200">
-              <div className="text-center px-6">
-                <svg viewBox="0 0 24 24" className="h-10 w-10 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
-                  <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
-                </svg>
-                <p className="text-sm">No use cases in this tracker yet. Click “Add Use Case” to create one.</p>
-              </div>
+          {trackerItems.length === 0 ? (
+            <div className="h-56 flex items-center justify-center text-neutral-400 rounded-xl border border-dashed border-neutral-200 text-sm">
+              No {noun}s yet.
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {visibleUsecases.map(uc => (
-                <button
-                  key={uc.id}
-                  onClick={() => selectCase(uc)}
-                  className="text-left bg-white rounded-xl border border-neutral-200 p-4 hover:border-brand hover:shadow-md hover:shadow-brand/5 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <h3 className="text-sm font-semibold text-neutral-900 leading-snug flex-1 min-w-0">{uc.title}</h3>
-                    <svg viewBox="0 0 24 24" className="h-4 w-4 text-neutral-300 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
-                      <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
-                    </svg>
-                  </div>
-                  {uc.summary && (
-                    <p className="text-xs text-neutral-500 leading-relaxed mt-1.5 line-clamp-2">{uc.summary}</p>
-                  )}
-                  <div className="flex flex-wrap items-center gap-1.5 mt-3">
-                    <span className="px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600 text-[11px] font-medium">{uc.category}</span>
-                    {uc.subCases?.length ? (
-                      <span className="px-2 py-0.5 rounded-full bg-brand/10 text-brand text-[11px] font-medium">{uc.subCases.length} sub-cases</span>
-                    ) : null}
+              {trackerItems.map(it => (
+                <button key={it.id} onClick={() => editItem(it)}
+                  className="text-left bg-white rounded-xl border border-neutral-200 p-4 hover:border-brand hover:shadow-md transition-all">
+                  <h3 className="text-sm font-semibold text-neutral-900 leading-snug">{it.title}</h3>
+                  {it.summary && <p className="text-xs text-neutral-500 mt-1.5 line-clamp-2">{it.summary}</p>}
+                  <div className="flex flex-wrap gap-1.5 mt-3">
+                    {it.category_id && (
+                      <span className="px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600 text-[11px] font-medium">
+                        {trackerCats.find(c => c.id === it.category_id)?.label ?? 'Category'}
+                      </span>
+                    )}
                   </div>
                 </button>
               ))}
@@ -990,31 +498,246 @@ export default function AdminPanel() {
         </div>
       )}
 
-      {/* Edit / create use case — modal on all screen sizes */}
-      {activeTab === 'usecases' && selectedId !== null && (
-        <div className="fixed inset-0 z-50 flex flex-col sm:items-center sm:justify-center">
-          <div className="absolute inset-0 bg-neutral-950/50 backdrop-blur-sm" onClick={closeForm} />
-          <div className="relative mt-auto sm:mt-0 w-full sm:max-w-3xl sm:mx-4 max-h-[92vh] sm:max-h-[90vh] flex flex-col bg-neutral-50 rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden">
-            <div className="flex-shrink-0 flex items-center justify-between px-4 sm:px-6 h-14 bg-white border-b border-neutral-100">
-              <span className="text-sm font-semibold text-neutral-900">
-                {selectedId === 'new' ? 'New Use Case' : 'Edit Use Case'}
+      {tab === 'trackers' && isAdmin && (
+        <TrackersTab trackers={trackers} saving={saving} setSaving={setSaving} setMsg={setMsg} onChanged={loadAll} />
+      )}
+
+      {tab === 'users' && isAdmin && (
+        <UsersTab editors={editors} trackers={trackers} getToken={accessToken} onChanged={loadAll} />
+      )}
+
+      {itemForm && activeTracker && (
+        <ItemEditor type={activeType} form={itemForm} categories={trackerCats}
+          onChange={setItemForm} onSave={saveItem} onDelete={deleteItem} onClose={() => setItemForm(null)} saving={saving} />
+      )}
+    </div>
+  );
+}
+
+const tabCls = (active: boolean) => `px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${active ? 'bg-brand text-white' : 'text-neutral-600 hover:bg-neutral-100'}`;
+
+// ── Category manager (integrations / automation) ──────────────────────────────
+function CategoryManager({
+  tracker, categories, saving, onChanged, setSaving, setMsg,
+}: {
+  tracker: TrackerRow; categories: CategoryRow[]; saving: boolean;
+  onChanged: () => Promise<void>; setSaving: (b: boolean) => void; setMsg: (m: any) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [label, setLabel] = useState('');
+  const [icon, setIcon] = useState('');
+
+  async function add() {
+    if (!label.trim()) return;
+    setSaving(true);
+    const pos = Math.max(0, ...categories.map(c => c.position)) + 1;
+    const { error } = await getSupabase().from('categories').insert({
+      tracker_id: tracker.id, slug: slugify(label), label: label.trim(), icon: icon.trim() || null, position: pos,
+    });
+    if (error) setMsg({ type: 'error', text: error.message });
+    else { setLabel(''); setIcon(''); await onChanged(); }
+    setSaving(false);
+  }
+  async function remove(id: string) {
+    if (!confirm('Delete this category? Items in it become uncategorized.')) return;
+    setSaving(true);
+    const { error } = await getSupabase().from('categories').delete().eq('id', id);
+    if (error) setMsg({ type: 'error', text: error.message });
+    else await onChanged();
+    setSaving(false);
+  }
+
+  return (
+    <div className="mb-6 rounded-xl border border-neutral-200 bg-white">
+      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-neutral-700">
+        <span>Categories ({categories.length})</span>
+        <svg viewBox="0 0 24 24" className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9" /></svg>
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-3 border-t border-neutral-100 pt-3">
+          <div className="flex flex-wrap gap-2">
+            {categories.map(c => (
+              <span key={c.id} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-neutral-100 text-sm text-neutral-700">
+                {c.icon && <span>{c.icon}</span>}{c.label}
+                <button onClick={() => remove(c.id)} className="text-neutral-400 hover:text-red-500">✕</button>
               </span>
-              <button
-                onClick={closeForm}
-                aria-label="Close"
-                className="inline-flex items-center justify-center h-9 w-9 rounded-lg text-neutral-500 hover:bg-neutral-100 transition-colors"
-              >
-                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
-            </div>
-            <div className="overflow-y-auto p-4 sm:p-6">
-              {editCard}
-            </div>
+            ))}
+            {categories.length === 0 && <span className="text-xs text-neutral-400 italic">No categories yet.</span>}
+          </div>
+          <div className="flex gap-2">
+            <input className={`${inputCls} w-16`} placeholder="🏥" value={icon} onChange={e => setIcon(e.target.value)} />
+            <input className={inputCls} placeholder="Category label" value={label} onChange={e => setLabel(e.target.value)} onKeyDown={e => e.key === 'Enter' && add()} />
+            <button onClick={add} disabled={saving || !label.trim()} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand/90 disabled:opacity-40 flex-shrink-0">Add</button>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Trackers tab (admin) ──────────────────────────────────────────────────────
+function TrackersTab({
+  trackers, saving, setSaving, setMsg, onChanged,
+}: {
+  trackers: TrackerRow[]; saving: boolean; setSaving: (b: boolean) => void; setMsg: (m: any) => void; onChanged: () => Promise<void>;
+}) {
+  const [edit, setEdit] = useState<TrackerRow | 'new' | null>(null);
+  const [title, setTitle] = useState('');
+  const [slug, setSlug] = useState('');
+  const [description, setDescription] = useState('');
+  const [type, setType] = useState<TrackerType>('usecases');
+  const [configText, setConfigText] = useState('{}');
+
+  function start(t: TrackerRow | 'new') {
+    setEdit(t);
+    if (t === 'new') { setTitle(''); setSlug(''); setDescription(''); setType('usecases'); setConfigText('{}'); }
+    else { setTitle(t.title); setSlug(t.slug); setDescription(t.description ?? ''); setType(t.type as TrackerType); setConfigText(JSON.stringify(t.config ?? {}, null, 2)); }
+  }
+
+  async function save() {
+    if (!title.trim()) return;
+    let config: any = {};
+    try { config = configText.trim() ? JSON.parse(configText) : {}; }
+    catch { setMsg({ type: 'error', text: 'Config is not valid JSON.' }); return; }
+    setSaving(true);
+    const sb = getSupabase();
+    let error;
+    if (edit === 'new') {
+      const pos = Math.max(0, ...trackers.map(t => t.position)) + 1;
+      ({ error } = await sb.from('trackers').insert({ slug: slug || slugify(title), title: title.trim(), description: description || null, type, config, position: pos }));
+    } else if (edit) {
+      ({ error } = await sb.from('trackers').update({ slug: slug || slugify(title), title: title.trim(), description: description || null, type, config }).eq('id', edit.id));
+    }
+    if (error) { setMsg({ type: 'error', text: error.message }); setSaving(false); return; }
+    setEdit(null); await onChanged(); setMsg({ type: 'ok', text: 'Tracker saved.' }); setSaving(false);
+  }
+
+  async function remove(t: TrackerRow) {
+    if (!confirm(`Delete tracker "${t.title}" and all its content?`)) return;
+    setSaving(true);
+    const { error } = await getSupabase().from('trackers').delete().eq('id', t.id);
+    if (error) setMsg({ type: 'error', text: error.message });
+    else { if (edit !== 'new' && edit?.id === t.id) setEdit(null); await onChanged(); }
+    setSaving(false);
+  }
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="lg:col-span-1 bg-white rounded-xl border border-neutral-200 overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-100">
+          <span className="text-sm font-semibold text-neutral-700">{trackers.length} Trackers</span>
+          <button onClick={() => start('new')} className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand/90">+ Add</button>
+        </div>
+        {trackers.map(t => (
+          <div key={t.id} onClick={() => start(t)} className={`flex items-center gap-2 px-4 py-3 border-b border-neutral-100 last:border-b-0 cursor-pointer hover:bg-neutral-50 ${edit !== 'new' && edit?.id === t.id ? 'bg-brand/5 border-l-2 border-l-brand' : ''}`}>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold text-neutral-900 truncate">{t.title}</div>
+              <div className="text-xs text-neutral-400 mt-0.5">{t.type}</div>
+            </div>
+            <button onClick={e => { e.stopPropagation(); remove(t); }} className="p-1 rounded text-neutral-300 hover:text-red-500">✕</button>
+          </div>
+        ))}
+      </div>
+
+      <div className="lg:col-span-2">
+        {edit === null ? (
+          <div className="h-48 flex items-center justify-center text-neutral-400 rounded-xl border border-dashed border-neutral-200 text-sm">Select a tracker or click Add</div>
+        ) : (
+          <div className="bg-white rounded-xl border border-neutral-200 p-4 sm:p-6 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label="Name"><input className={inputCls} value={title} onChange={e => { setTitle(e.target.value); if (edit === 'new') setSlug(slugify(e.target.value)); }} /></Field>
+              <Field label="Slug"><input className={inputCls} value={slug} onChange={e => setSlug(e.target.value)} /></Field>
+            </div>
+            <Field label="Type">
+              <select className={inputCls} value={type} onChange={e => setType(e.target.value as TrackerType)}>
+                <option value="usecases">Use Cases</option>
+                <option value="integrations">Integrations</option>
+                <option value="automation">Automation Processes</option>
+              </select>
+            </Field>
+            <Field label="Description"><textarea className={textareaCls} style={{ minHeight: 60 }} value={description} onChange={e => setDescription(e.target.value)} /></Field>
+            <Field label="Page config (JSON — hero, stats, cta)">
+              <textarea className={`${textareaCls} font-mono text-xs`} style={{ minHeight: 140 }} value={configText} onChange={e => setConfigText(e.target.value)} />
+            </Field>
+            <div className="flex justify-end pt-2 border-t border-neutral-100">
+              <button onClick={save} disabled={saving || !title.trim()} className="px-6 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand/90 disabled:opacity-40">
+                {saving ? 'Saving…' : edit === 'new' ? 'Create Tracker' : 'Save Tracker'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Users tab (admin) ─────────────────────────────────────────────────────────
+function UsersTab({
+  editors, trackers, getToken, onChanged,
+}: {
+  editors: ProfileRow[]; trackers: TrackerRow[]; getToken: () => Promise<string>; onChanged: () => Promise<void>;
+}) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [trackerId, setTrackerId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
+
+  async function create() {
+    if (!email.trim() || password.length < 6) { setMsg({ type: 'error', text: 'Email + password (6+ chars) required.' }); return; }
+    setBusy(true); setMsg(null);
+    const res = await fetch('/api/admin/users', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await getToken()}` },
+      body: JSON.stringify({ email: email.trim(), password, trackerId: trackerId || null }),
+    });
+    if (!res.ok) { setMsg({ type: 'error', text: await res.text() }); setBusy(false); return; }
+    setEmail(''); setPassword(''); setTrackerId('');
+    await onChanged(); setMsg({ type: 'ok', text: 'Editor created.' }); setBusy(false);
+  }
+  async function remove(u: ProfileRow) {
+    if (!confirm(`Remove ${u.email}?`)) return;
+    setBusy(true);
+    const res = await fetch('/api/admin/users', {
+      method: 'DELETE', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await getToken()}` },
+      body: JSON.stringify({ userId: u.id }),
+    });
+    if (!res.ok) setMsg({ type: 'error', text: await res.text() });
+    else await onChanged();
+    setBusy(false);
+  }
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="bg-white rounded-xl border border-neutral-200 p-5 space-y-4">
+        <h3 className="text-sm font-semibold text-neutral-900">Create editor</h3>
+        <Field label="Email"><input className={inputCls} value={email} onChange={e => setEmail(e.target.value)} type="email" /></Field>
+        <Field label="Temporary password"><input className={inputCls} value={password} onChange={e => setPassword(e.target.value)} type="text" placeholder="min 6 characters" /></Field>
+        <Field label="Assigned tracker">
+          <select className={inputCls} value={trackerId} onChange={e => setTrackerId(e.target.value)}>
+            <option value="">— None —</option>
+            {trackers.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+          </select>
+        </Field>
+        <Banner msg={msg} />
+        <button onClick={create} disabled={busy} className="px-5 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand/90 disabled:opacity-40">
+          {busy ? 'Working…' : 'Create editor'}
+        </button>
+      </div>
+
+      <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden">
+        <div className="px-4 py-3 border-b border-neutral-100 text-sm font-semibold text-neutral-700">{editors.length} editors</div>
+        {editors.length === 0 ? (
+          <div className="px-4 py-8 text-center text-sm text-neutral-400">No editors yet.</div>
+        ) : editors.map(u => (
+          <div key={u.id} className="flex items-center gap-2 px-4 py-3 border-b border-neutral-100 last:border-b-0">
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-neutral-800 truncate">{u.email}</div>
+              <div className="text-xs text-neutral-400">{trackers.find(t => t.id === u.tracker_id)?.title ?? 'Unassigned'}</div>
+            </div>
+            <button onClick={() => remove(u)} className="p-1 rounded text-neutral-300 hover:text-red-500">✕</button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

@@ -1,12 +1,17 @@
 import { useState, useEffect } from 'react';
 import type { Tracker } from '../types';
 
+const itemCount = (t: Tracker) =>
+  t.usecases.length + t.integrations.length + t.processes.length;
+
 export default function MobileNav({
   trackers = [],
   currentTrackerId,
+  showPresent = true,
 }: {
   trackers?: Tracker[];
   currentTrackerId?: string;
+  showPresent?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const presentHref = currentTrackerId ? `/present?tracker=${currentTrackerId}` : '/present';
@@ -88,9 +93,11 @@ export default function MobileNav({
                     <circle cx="12" cy="12" r="3" />
                   </>
                 } />
-                <DrawerLink href={presentHref} label="Present" icon={
-                  <path d="M8 5v14l11-7z" />
-                } />
+                {showPresent && (
+                  <DrawerLink href={presentHref} label="Present" icon={
+                    <path d="M8 5v14l11-7z" />
+                  } />
+                )}
               </div>
 
               {/* Trackers */}
@@ -119,7 +126,7 @@ export default function MobileNav({
                           />
                           <span className="truncate">{t.title}</span>
                           <span className={`ml-auto text-xs tabular-nums flex-shrink-0 ${active ? 'text-brand/60' : 'text-neutral-400'}`}>
-                            {t.usecases.length}
+                            {itemCount(t)}
                           </span>
                         </a>
                       );
