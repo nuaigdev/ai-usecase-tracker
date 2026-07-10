@@ -1,3 +1,4 @@
+import './nodeWebSocket'; // must load before createClient() runs (Node < 22 WebSocket shim)
 import type {
   TrackerData, Tracker, Category, TrackerType, TrackerConfig,
   UseCase, Integration, AutomationProcess,

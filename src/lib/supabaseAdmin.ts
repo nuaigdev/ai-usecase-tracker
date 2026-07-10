@@ -1,3 +1,4 @@
+import './nodeWebSocket'; // must load before createClient() runs (Node < 22 WebSocket shim)
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 // Service-role client — bypasses RLS. SERVER ONLY. Never import this from a
