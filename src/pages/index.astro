@@ -12,9 +12,8 @@ const data = await readData();
 const trackerId = Astro.url.searchParams.get('tracker') ?? data.trackers[0]?.id ?? '';
 const tracker = data.trackers.find(t => t.id === trackerId) ?? data.trackers[0];
 const type = tracker?.type ?? 'usecases';
-const isDark = type === 'integrations';
 ---
-<Layout title={`${tracker?.title ?? 'Tracker'} — NuAig`} theme={isDark ? 'dark' : 'light'}>
+<Layout title={`${tracker?.title ?? 'Tracker'} — NuAig`} theme="light">
   <Header currentTrackerId={tracker?.id} trackers={data.trackers} showPresent={type === 'usecases'} />
 
   {data.trackers.length === 0 ? (
