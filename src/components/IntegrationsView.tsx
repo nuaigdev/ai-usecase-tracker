@@ -106,7 +106,9 @@ export default function IntegrationsView({ tracker }: { tracker: Tracker }) {
   const uncategorized = items.filter(i => !i.categoryId || !categories.some(c => c.id === i.categoryId));
 
   const [filter, setFilter] = useState<string>('all');
+  // Categories start expanded; an entry only appears here once the user collapses one.
   const [open, setOpen] = useState<Record<string, boolean>>({});
+  const isOpen = (id: string) => open[id] ?? true;
 
   const itemsByCat = useMemo(() => {
     const map: Record<string, Integration[]> = {};
@@ -117,7 +119,7 @@ export default function IntegrationsView({ tracker }: { tracker: Tracker }) {
   const heroHeading = config.hero?.heading ?? `${tracker.title}`;
   const stats = config.stats ?? [];
 
-  const toggle = (id: string) => setOpen(o => ({ ...o, [id]: !o[id] }));
+  const toggle = (id: string) => setOpen(o => ({ ...o, [id]: !(o[id] ?? true) }));
 
   const visibleCats = filter === 'all' ? categories : categories.filter(c => c.slug === filter);
   const showUncat = (filter === 'all' || filter === 'other') && uncategorized.length > 0;
@@ -168,19 +170,19 @@ export default function IntegrationsView({ tracker }: { tracker: Tracker }) {
       <div className="iv-cats">
         {visibleCats.map((c, idx) => {
           const list = itemsByCat[c.id] ?? [];
-          const isOpen = !!open[c.id] || filter === c.slug;
+          const expanded = isOpen(c.id) || filter === c.slug;
           return (
             <div className="iv-cat" key={c.id}>
-              <button className="iv-cat-head" onClick={() => toggle(c.id)} aria-expanded={isOpen}>
+              <button className="iv-cat-head" onClick={() => toggle(c.id)} aria-expanded={expanded}>
                 <div className="iv-cat-icon">{c.icon ?? '🔗'}</div>
                 <div>
                   <div className="iv-cat-label">Category {String(idx + 1).padStart(2, '0')}</div>
                   <div className="iv-cat-title">{c.label}</div>
                 </div>
                 <div className="iv-cat-count">{list.length} {list.length === 1 ? 'platform' : 'platforms'}</div>
-                <Chevron open={isOpen} />
+                <Chevron open={expanded} />
               </button>
-              {isOpen && (
+              {expanded && (
                 <div className="iv-cat-body">
                   {list.length > 0 ? (
                     <div className="iv-logo-grid">
@@ -197,16 +199,16 @@ export default function IntegrationsView({ tracker }: { tracker: Tracker }) {
 
         {showUncat && (
           <div className="iv-cat">
-            <button className="iv-cat-head" onClick={() => toggle('__uncat')} aria-expanded={!!open['__uncat']}>
+            <button className="iv-cat-head" onClick={() => toggle('__uncat')} aria-expanded={isOpen('__uncat')}>
               <div className="iv-cat-icon">🔗</div>
               <div>
                 <div className="iv-cat-label">Other</div>
                 <div className="iv-cat-title">Uncategorized</div>
               </div>
               <div className="iv-cat-count">{uncategorized.length} platforms</div>
-              <Chevron open={!!open['__uncat']} />
+              <Chevron open={isOpen('__uncat')} />
             </button>
-            {open['__uncat'] && (
+            {isOpen('__uncat') && (
               <div className="iv-cat-body">
                 <div className="iv-logo-grid">
                   {uncategorized.map(it => <IntegrationCard key={it.id} it={it} />)}
