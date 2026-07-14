@@ -6,6 +6,7 @@ import Header from '../components/Header.astro';
 import CardGrid from '../components/CardGrid';
 import IntegrationsView from '../components/IntegrationsView';
 import AutomationView from '../components/AutomationView';
+import BIView from '../components/BIView';
 import { readData } from '../lib/storage';
 
 const data = await readData();
@@ -36,6 +37,14 @@ const type = tracker?.type ?? 'usecases';
         {tracker.description && <p class="text-sm text-neutral-500 mt-1">{tracker.description}</p>}
       </div>
       <AutomationView tracker={tracker} client:load />
+    </main>
+  ) : type === 'bi' ? (
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+      <div class="mb-6">
+        <h1 class="text-2xl font-bold text-neutral-900">{tracker.title}</h1>
+        {tracker.description && <p class="text-sm text-neutral-500 mt-1">{tracker.description}</p>}
+      </div>
+      <BIView tracker={tracker} client:load />
     </main>
   ) : (
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">

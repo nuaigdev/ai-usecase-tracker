@@ -5,41 +5,92 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm run dev      # dev server at localhost:4321
-npm run build    # static build → dist/
-npm run preview  # preview the dist/ output locally
+npm run dev        # dev server at localhost:4321
+npm run build      # build → .vercel/output (SSR, @astrojs/vercel adapter)
+npm run preview    # preview the build locally
+
+npm run db:schema  # apply supabase/schema.sql over a direct Postgres connection
+npm run create-admin
+npm run migrate    # one-off: copy legacy Vercel Blob data into Supabase
 ```
+
+The `db:*` scripts need `SUPABASE_DB_URL` in `.env.local` (Supabase → Settings →
+Database → Connection string → "Session pooler"). Note `scripts/` is gitignored —
+it is local-only operator tooling and is not part of a clean checkout.
 
 ## Architecture
 
-**Stack:** Astro 4 (static output) + React islands + Tailwind CSS 3. No database — all data is in `src/data/usecases.ts`.
+**Stack:** Astro 4 (SSR via `@astrojs/vercel`, `prerender = false` on the data
+pages) + React islands + Tailwind CSS 3, with **Supabase** (Postgres + Auth +
+Storage) as the backend. Content is *not* in the repo — it lives in the database
+and is read at request time by `src/lib/storage.ts`.
 
-**Two pages:**
-- `/` (`src/pages/index.astro`) — dashboard with stats header, filter bar, and expandable use-case cards
-- `/present` (`src/pages/present.astro`) — full-screen slideshow mode
+### Data model
 
-**React islands (interactive):**
-- `src/components/CardGrid.tsx` — handles search/filter state and accordion expand/collapse for cards
-- `src/components/PresentMode.tsx` — full-screen slideshow with keyboard nav (←/→/Space/Esc/L), touch swipe, slide transitions, and a slide-in limitations panel
+Four tables (`supabase/schema.sql`): `trackers` → `categories` → `items`, plus
+`profiles` for roles. A tracker's `type` decides how its items are shaped and
+rendered; the per-type payload lives in the `items.data` **jsonb** column, so a
+new tracker type usually needs *no* schema change.
 
-**Static Astro components:**
-- `src/layouts/Layout.astro` — base HTML shell; accepts `present` boolean to switch body styles
-- `src/components/Header.astro` — sticky header with logo and Present button
-- `src/pages/index.astro` — renders stats and passes `usecases` array to `CardGrid`
+| `trackers.type` | `items.data` payload | Public component |
+| --- | --- | --- |
+| `usecases` | `description`, `businessValue[]`, `techStack[]`, `limitations[]`, `complianceFlags[]`, `subCases[]` | `CardGrid.tsx` |
+| `integrations` | `tag`, `url` | `IntegrationsView.tsx` |
+| `automation` | `description`, `businessValue[]`, `techStack[]`, `steps[]` (a flow graph) | `AutomationView.tsx` |
+| `bi` | `description`, `kpis[]`, `screenshots[]` (`{url, caption?}`) | `BIView.tsx` |
 
-**Data model** (`src/data/usecases.ts`):
-```ts
-{ id, title, category, status, summary, description,
-  businessValue[], techStack[], limitations[], complianceFlags[],
-  owner?, lastUpdated? }
-```
-Status is `"planned" | "in-progress" | "live"`. To update content, edit this file directly.
+`src/types.ts` is the source of truth for these shapes; `src/lib/storage.ts` maps
+rows → typed objects (and tolerates hand-edited rows, e.g. a screenshot stored as
+a bare URL string).
 
-**Brand colors** (from `NuAig-Black-2.svg`):
-- Blue accent: `#069BDF` (used as `brand` in Tailwind config)
-- Dark: `#111111`
-- Two logo variants: `public/logo.svg` (dark text, for light bg) and `public/logo-white.svg` (white text, for dark bg/present mode)
+### Pages
+
+- `/` (`src/pages/index.astro`) — renders whichever tracker `?tracker=<slug>`
+  names, branching on `type` to the component in the table above.
+- `/present` — full-screen slideshow. **Use-case trackers only**; the Present
+  button is hidden for every other type.
+- `/admin` — `AdminPanel.tsx`, a single island handling auth, tracker CRUD,
+  category CRUD, item CRUD, and editor-user management.
+- `/api/admin/users.ts` — the only server route; uses the service-role key to
+  create/delete editor accounts after verifying the caller is an admin.
+
+### Auth & RLS
+
+- **admin** (`profiles.role = 'admin'`) — full CRUD on every tracker.
+- **editor** (`profiles.role = 'editor'`, `tracker_id` set) — RLS confines writes
+  to their one tracker.
+
+Public reads need no auth. The admin panel writes with the logged-in user's JWT,
+so RLS — not client-side code — is what actually enforces the above.
+
+**Key handling:** `src/lib/supabase.ts` may only ever touch `PUBLIC_*` env vars
+(it ships to the browser). The service-role key lives in `src/lib/supabaseAdmin.ts`,
+which must only be imported from server-only routes.
+
+### Screenshot storage (BI)
+
+Dashboard screenshots go in the public **`dashboards`** Supabase Storage bucket.
+The admin panel uploads **straight from the browser** with the user's JWT — never
+through an API route, because a Vercel function caps the request body at 4.5 MB
+and dashboard PNGs routinely exceed it. Bucket reads are public; writes require a
+signed-in user (`supabase/migrations/0001_business_intelligence.sql`).
+
+### Migrations
+
+Post-schema changes live in `supabase/migrations/`, applied via the Supabase SQL
+Editor. Each file is idempotent and safe to re-run. See `supabase/README.md`.
+
+## Brand
+
+- Blue accent `#069BDF` (exposed as `brand` in the Tailwind config), dark `#111111`.
+- `public/logo.svg` (dark text, light bg) and `public/logo-white.svg` (present mode).
 
 ## Deployment
 
-`astro build` produces a fully static `dist/` folder. Deploy to Vercel by pointing it at this repo — no adapter, no environment variables, no server-side code.
+Vercel, from `main`. Node is pinned to **20.x** (`package.json` → `engines`), which
+the `@astrojs/vercel` adapter requires to emit a valid runtime. `src/lib/nodeWebSocket.ts`
+shims a global `WebSocket` so `supabase-js` can `createClient()` on Node 20 — it must
+be imported *before* any `createClient()` call.
+
+Environment variables (Vercel + `.env.local`): `PUBLIC_SUPABASE_URL`,
+`PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`.

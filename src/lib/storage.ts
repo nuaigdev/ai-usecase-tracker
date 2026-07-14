@@ -1,7 +1,7 @@
 import './nodeWebSocket'; // must load before createClient() runs (Node < 22 WebSocket shim)
 import type {
   TrackerData, Tracker, Category, TrackerType, TrackerConfig,
-  UseCase, Integration, AutomationProcess,
+  UseCase, Integration, AutomationProcess, BIDashboard, BIScreenshot,
 } from '../types';
 import { createServerClient, isSupabaseConfigured } from './supabase';
 
@@ -21,7 +21,7 @@ interface ItemRow {
 }
 
 const asType = (t: string): TrackerType =>
-  t === 'integrations' || t === 'automation' ? t : 'usecases';
+  t === 'integrations' || t === 'automation' || t === 'bi' ? t : 'usecases';
 
 function toUseCase(row: ItemRow): UseCase {
   const d = row.data ?? {};
@@ -67,6 +67,24 @@ function toProcess(row: ItemRow): AutomationProcess {
   };
 }
 
+function toDashboard(row: ItemRow): BIDashboard {
+  const d = row.data ?? {};
+  // A screenshot may be a bare URL string as well as {url, caption}, so that
+  // hand-edited rows and pasted links both render.
+  const screenshots: BIScreenshot[] = (d.screenshots ?? [])
+    .map((s: any) => (typeof s === 'string' ? { url: s } : { url: s?.url, caption: s?.caption }))
+    .filter((s: BIScreenshot) => Boolean(s.url));
+
+  return {
+    id: row.slug,
+    categoryId: row.category_id,
+    title: row.title,
+    description: d.description ?? row.summary ?? '',
+    kpis: d.kpis ?? [],
+    screenshots,
+  };
+}
+
 export async function readData(): Promise<TrackerData> {
   if (!isSupabaseConfigured()) return { trackers: [] };
 
@@ -105,6 +123,7 @@ export async function readData(): Promise<TrackerData> {
       usecases: type === 'usecases' ? rows.map(toUseCase) : [],
       integrations: type === 'integrations' ? rows.map(toIntegration) : [],
       processes: type === 'automation' ? rows.map(toProcess) : [],
+      dashboards: type === 'bi' ? rows.map(toDashboard) : [],
     };
   });
 

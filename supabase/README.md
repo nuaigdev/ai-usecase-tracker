@@ -47,6 +47,23 @@ the **service-role** key server-side only.
    redesigned Integrations tracker (7 categories / 19 platforms). It is
    idempotent — re-running skips trackers whose slug already exists.
 
+## Migrations
+
+One-off changes that came after the initial schema live in [`migrations/`](./migrations).
+Apply one by pasting it into Dashboard → SQL Editor → New query. (Operators with a
+direct `SUPABASE_DB_URL` can instead pipe the file through psql; the `scripts/`
+folder is local-only tooling and is not committed.) Every migration is idempotent
+and safe to re-run.
+
+- **`0001_business_intelligence.sql`** — adds the Business Intelligence tracker
+  (`type = 'bi'`) and the public **`dashboards`** storage bucket its screenshots
+  live in. No table changes were needed: `trackers.type` has no CHECK constraint
+  and the BI payload (`description`, `kpis[]`, `screenshots[]`) fits in the
+  existing `items.data` jsonb column. Reads on the bucket are public (the images
+  are embedded in a public page); writes require a signed-in user, and the admin
+  panel uploads straight from the browser so large PNGs never hit a serverless
+  function's request-body limit.
+
 ## Roles
 
 - **admin** — `profiles.role = 'admin'`, `tracker_id` null. Manages every tracker,

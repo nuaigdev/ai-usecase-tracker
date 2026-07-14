@@ -89,14 +89,19 @@ function SignIn() {
 type ItemForm = {
   id: string | 'new';
   slug: string; title: string; summary: string; categoryId: string;
+  // usecases / automation / bi shared
+  description: string;
   // usecases / automation shared
-  description: string; businessValue: string; techStack: string;
+  businessValue: string; techStack: string;
   // usecases only
   category: string; limitations: string; complianceFlags: string; owner: string; lastUpdated: string;
   // integrations only
   tag: string; url: string;
   // automation only
   steps: { id: string; title: string; desc: string; kind: AutomationStepKind; next: string[] }[];
+  // bi only
+  kpis: string;
+  screenshots: { url: string; caption: string }[];
 };
 
 function emptyItemForm(): ItemForm {
@@ -106,6 +111,7 @@ function emptyItemForm(): ItemForm {
     category: 'Resident Care', limitations: '', complianceFlags: '', owner: 'NuAig',
     lastUpdated: new Date().toISOString().split('T')[0],
     tag: '', url: '', steps: [],
+    kpis: '', screenshots: [],
   };
 }
 
@@ -119,6 +125,10 @@ function itemToForm(row: ItemRow): ItemForm {
     lastUpdated: d.lastUpdated ?? new Date().toISOString().split('T')[0],
     tag: d.tag ?? '', url: d.url ?? '',
     steps: (d.steps ?? []).map((s: any) => ({ id: s.id, title: s.title, desc: s.desc ?? '', kind: s.kind ?? 'action', next: s.next ?? [] })),
+    kpis: joinLines(d.kpis),
+    screenshots: (d.screenshots ?? [])
+      .map((s: any) => (typeof s === 'string' ? { url: s, caption: '' } : { url: s?.url ?? '', caption: s?.caption ?? '' }))
+      .filter((s: { url: string }) => Boolean(s.url)),
   };
 }
 
@@ -127,6 +137,13 @@ function formToData(f: ItemForm, type: TrackerType): any {
   if (type === 'automation') return {
     description: f.description, businessValue: lines(f.businessValue), techStack: lines(f.techStack),
     steps: f.steps.map(s => ({ id: s.id || slugify(s.title), title: s.title, desc: s.desc || undefined, kind: s.kind, next: s.next })),
+  };
+  if (type === 'bi') return {
+    description: f.description,
+    kpis: lines(f.kpis),
+    screenshots: f.screenshots
+      .filter(s => s.url.trim())
+      .map(s => ({ url: s.url.trim(), caption: s.caption.trim() || undefined })),
   };
   return {
     category: f.category, description: f.description,
@@ -189,6 +206,100 @@ function StepsEditor({ steps, onChange }: { steps: ItemForm['steps']; onChange: 
   );
 }
 
+// ── Screenshots editor (bi) ───────────────────────────────────────────────────
+// Files go straight from the browser to the public 'dashboards' storage bucket
+// with the signed-in user's JWT — never through a serverless function, whose
+// request body cap would reject a large dashboard PNG.
+
+const SCREENSHOT_BUCKET = 'dashboards';
+const MAX_SCREENSHOT_BYTES = 15 * 1024 * 1024;
+
+function ScreenshotsEditor({
+  shots, onChange,
+}: {
+  shots: ItemForm['screenshots']; onChange: (s: ItemForm['screenshots']) => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState('');
+
+  async function upload(files: FileList | null) {
+    if (!files?.length) return;
+    setUploading(true); setError('');
+
+    const sb = getSupabase();
+    const added: ItemForm['screenshots'] = [];
+    for (const file of Array.from(files)) {
+      if (!file.type.startsWith('image/')) { setError(`${file.name} is not an image.`); continue; }
+      if (file.size > MAX_SCREENSHOT_BYTES) { setError(`${file.name} is larger than 15 MB.`); continue; }
+
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'png';
+      const path = `${crypto.randomUUID()}.${ext}`;
+      const { error: upErr } = await sb.storage.from(SCREENSHOT_BUCKET)
+        .upload(path, file, { contentType: file.type, upsert: false });
+      if (upErr) { setError(upErr.message); continue; }
+
+      const { data } = sb.storage.from(SCREENSHOT_BUCKET).getPublicUrl(path);
+      added.push({ url: data.publicUrl, caption: '' });
+    }
+
+    if (added.length) onChange([...shots, ...added]);
+    setUploading(false);
+  }
+
+  function move(idx: number, dir: -1 | 1) {
+    const to = idx + dir;
+    if (to < 0 || to >= shots.length) return;
+    const next = [...shots];
+    [next[idx], next[to]] = [next[to], next[idx]];
+    onChange(next);
+  }
+
+  return (
+    <div className="space-y-3">
+      {shots.length > 0 && (
+        <div className="space-y-2">
+          {shots.map((s, idx) => (
+            <div key={idx} className="flex items-center gap-3 rounded-lg border border-neutral-200 p-2 bg-neutral-50/60">
+              <span className="text-xs font-bold text-neutral-400 w-5 text-center flex-shrink-0">{idx + 1}</span>
+              <img src={s.url} alt="" className="h-14 w-20 flex-shrink-0 rounded-md object-cover border border-neutral-200 bg-white" />
+              <input
+                className={inputCls}
+                placeholder="Caption (optional)"
+                value={s.caption}
+                onChange={e => onChange(shots.map((x, i) => (i === idx ? { ...x, caption: e.target.value } : x)))}
+              />
+              <div className="flex items-center gap-0.5 flex-shrink-0">
+                <button type="button" onClick={() => move(idx, -1)} disabled={idx === 0}
+                  className="p-1.5 rounded text-neutral-400 hover:text-brand disabled:opacity-25" title="Move up">
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="18 15 12 9 6 15" /></svg>
+                </button>
+                <button type="button" onClick={() => move(idx, 1)} disabled={idx === shots.length - 1}
+                  className="p-1.5 rounded text-neutral-400 hover:text-brand disabled:opacity-25" title="Move down">
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9" /></svg>
+                </button>
+                <button type="button" onClick={() => onChange(shots.filter((_, i) => i !== idx))}
+                  className="p-1.5 rounded text-neutral-400 hover:text-red-500" title="Remove">
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6" /></svg>
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <label className={`block w-full py-4 rounded-lg border border-dashed text-center text-sm cursor-pointer transition-colors ${
+        uploading ? 'border-neutral-200 text-neutral-400' : 'border-neutral-300 text-neutral-500 hover:border-brand hover:text-brand'
+      }`}>
+        <input type="file" accept="image/*" multiple className="hidden" disabled={uploading}
+          onChange={e => { void upload(e.target.files); e.target.value = ''; }} />
+        {uploading ? 'Uploading…' : shots.length ? '+ Add more screenshots' : '+ Upload screenshots (select as many as you like)'}
+      </label>
+
+      {error && <p className="text-xs text-red-600">{error}</p>}
+    </div>
+  );
+}
+
 function ItemEditor({
   type, form, categories, onChange, onSave, onDelete, onClose, saving,
 }: {
@@ -200,7 +311,8 @@ function ItemEditor({
     if (k === 'title' && form.id === 'new') next.slug = slugify(v as string);
     onChange(next);
   };
-  const noun = type === 'integrations' ? 'Integration' : type === 'automation' ? 'Process' : 'Use Case';
+  const noun = type === 'integrations' ? 'Integration' : type === 'automation' ? 'Process'
+    : type === 'bi' ? 'Dashboard' : 'Use Case';
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col sm:items-center sm:justify-center">
@@ -232,9 +344,28 @@ function ItemEditor({
               </Field>
             )}
 
-            <Field label={type === 'integrations' ? 'Short blurb' : 'Summary'}>
-              <textarea className={textareaCls} style={{ minHeight: 56 }} value={form.summary} onChange={e => set('summary', e.target.value)} />
-            </Field>
+            {/* A BI dashboard has no separate summary — its description is the card copy. */}
+            {type !== 'bi' && (
+              <Field label={type === 'integrations' ? 'Short blurb' : 'Summary'}>
+                <textarea className={textareaCls} style={{ minHeight: 56 }} value={form.summary} onChange={e => set('summary', e.target.value)} />
+              </Field>
+            )}
+
+            {type === 'bi' && (
+              <>
+                <Field label="Description">
+                  <textarea className={textareaCls} style={{ minHeight: 100 }} value={form.description} onChange={e => set('description', e.target.value)} />
+                </Field>
+                <Field label="Key Performance Indicators (one per line — spell them out in full)">
+                  <textarea className={textareaCls} style={{ minHeight: 100 }} value={form.kpis}
+                    onChange={e => set('kpis', e.target.value)}
+                    placeholder={'Average Length of Stay\nMonthly Recurring Revenue\nBed Occupancy Rate'} />
+                </Field>
+                <Field label={`Dashboard Screenshots${form.screenshots.length ? ` (${form.screenshots.length})` : ''}`}>
+                  <ScreenshotsEditor shots={form.screenshots} onChange={s => onChange({ ...form, screenshots: s })} />
+                </Field>
+              </>
+            )}
 
             {type === 'integrations' && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -387,7 +518,9 @@ export default function AdminPanel() {
       category_id: f.categoryId || null,
       slug: f.slug || slugify(f.title),
       title: f.title.trim(),
-      summary: f.summary,
+      // BI dashboards have no separate summary field; mirror the description so
+      // the admin list and any summary-based consumer still have card copy.
+      summary: activeType === 'bi' ? f.description : f.summary,
       data: formToData(f, activeType),
     };
     const sb = getSupabase();
@@ -426,7 +559,8 @@ export default function AdminPanel() {
   if (!authReady) return <div className="text-neutral-400 text-sm">Loading…</div>;
   if (!session) return <SignIn />;
 
-  const noun = activeType === 'integrations' ? 'integration' : activeType === 'automation' ? 'process' : 'use case';
+  const noun = activeType === 'integrations' ? 'integration' : activeType === 'automation' ? 'process'
+    : activeType === 'bi' ? 'dashboard' : 'use case';
 
   return (
     <div className="space-y-6">
@@ -462,7 +596,7 @@ export default function AdminPanel() {
             )}
           </div>
 
-          {activeTracker && (activeType === 'integrations' || activeType === 'automation') && (
+          {activeTracker && (activeType === 'integrations' || activeType === 'automation' || activeType === 'bi') && (
             <CategoryManager
               tracker={activeTracker} categories={trackerCats} saving={saving}
               onChanged={loadAll} setSaving={setSaving} setMsg={setMsg}
@@ -653,6 +787,7 @@ function TrackersTab({
                 <option value="usecases">Use Cases</option>
                 <option value="integrations">Integrations</option>
                 <option value="automation">Automation Processes</option>
+                <option value="bi">Business Intelligence</option>
               </select>
             </Field>
             <Field label="Description"><textarea className={textareaCls} style={{ minHeight: 60 }} value={description} onChange={e => setDescription(e.target.value)} /></Field>

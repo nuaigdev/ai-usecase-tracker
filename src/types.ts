@@ -1,4 +1,4 @@
-export type TrackerType = 'usecases' | 'integrations' | 'automation';
+export type TrackerType = 'usecases' | 'integrations' | 'automation' | 'bi';
 
 // ── Use-case content (items.data for type 'usecases') ────────────────────────
 
@@ -60,6 +60,22 @@ export interface AutomationProcess {
   steps: AutomationStep[];
 }
 
+// ── Business intelligence content (items.data for type 'bi') ─────────────────
+
+export interface BIScreenshot {
+  url: string;      // public URL in the 'dashboards' storage bucket
+  caption?: string;
+}
+
+export interface BIDashboard {
+  id: string;
+  categoryId: string | null;
+  title: string;
+  description: string;
+  kpis: string[];               // spelled out in full, e.g. "Average Length of Stay"
+  screenshots: BIScreenshot[];  // unbounded — the carousel pages through them
+}
+
 // ── Structural ───────────────────────────────────────────────────────────────
 
 export interface Category {
@@ -99,6 +115,7 @@ export interface Tracker {
   usecases: UseCase[];
   integrations: Integration[];
   processes: AutomationProcess[];
+  dashboards: BIDashboard[];
 }
 
 export interface TrackerData {
