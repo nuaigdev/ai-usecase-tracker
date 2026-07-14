@@ -119,6 +119,21 @@ export default function IntegrationsView({ tracker }: { tracker: Tracker }) {
   const heroHeading = config.hero?.heading ?? `${tracker.title}`;
   const stats = config.stats ?? [];
 
+  // Scorecard values. A platform that sits in two categories (ADP, OnShift,
+  // Enquire, FullCount) is one platform, so count distinct names, not rows.
+  const platformCount = useMemo(
+    () => new Set(items.map(i => i.title.trim().toLowerCase())).size,
+    [items],
+  );
+  const coveredCount = useMemo(
+    () => categories.filter(c => (itemsByCat[c.id] ?? []).length > 0).length + (uncategorized.length > 0 ? 1 : 0),
+    [categories, itemsByCat, uncategorized],
+  );
+  const statNum = (s: { num?: string; auto?: 'platforms' | 'categories' }) =>
+    s.auto === 'platforms' ? String(platformCount)
+    : s.auto === 'categories' ? String(coveredCount)
+    : s.num ?? '';
+
   const toggle = (id: string) => setOpen(o => ({ ...o, [id]: !(o[id] ?? true) }));
 
   const visibleCats = filter === 'all' ? categories : categories.filter(c => c.slug === filter);
@@ -126,7 +141,10 @@ export default function IntegrationsView({ tracker }: { tracker: Tracker }) {
 
   return (
     <div className="iv-root">
-      <style>{STYLES}</style>
+      {/* CSS must go in via __html, not as a text child: a text child gets
+          HTML-escaped by the SSR renderer (' → &#x27;) but not on the client,
+          and the mismatch makes React bail out of hydrating the whole island. */}
+      <style dangerouslySetInnerHTML={{ __html: STYLES }} />
       <div className="iv-grid" />
 
       {/* Hero */}
@@ -138,7 +156,7 @@ export default function IntegrationsView({ tracker }: { tracker: Tracker }) {
           <div className="iv-stats">
             {stats.map((s, i) => (
               <div className="iv-stat" key={i}>
-                <div className="iv-stat-num">{s.num}</div>
+                <div className="iv-stat-num">{statNum(s)}</div>
                 <div className="iv-stat-label">{s.label}</div>
               </div>
             ))}

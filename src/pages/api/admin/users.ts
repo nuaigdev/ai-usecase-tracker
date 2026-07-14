@@ -5,26 +5,33 @@ import { supabaseAdmin } from '../../../lib/supabaseAdmin';
 
 // Verifies the caller's Supabase access token belongs to an admin.
 // Returns the admin client on success, or a Response to short-circuit with.
-async function requireAdmin(request: Request) {
+// The `ok` discriminant is what lets the callers narrow this to a plain
+// Response — an `'error' in gate` check leaves the result `Response | undefined`
+// and breaks the APIRoute contract.
+type Gate =
+  | { ok: true; admin: ReturnType<typeof supabaseAdmin> }
+  | { ok: false; response: Response };
+
+async function requireAdmin(request: Request): Promise<Gate> {
   const auth = request.headers.get('Authorization');
   const token = auth?.startsWith('Bearer ') ? auth.slice(7) : null;
-  if (!token) return { error: new Response('Missing bearer token', { status: 401 }) };
+  if (!token) return { ok: false, response: new Response('Missing bearer token', { status: 401 }) };
 
   const admin = supabaseAdmin();
   const { data: userData, error } = await admin.auth.getUser(token);
-  if (error || !userData.user) return { error: new Response('Invalid session', { status: 401 }) };
+  if (error || !userData.user) return { ok: false, response: new Response('Invalid session', { status: 401 }) };
 
   const { data: profile } = await admin
     .from('profiles').select('role').eq('id', userData.user.id).single();
-  if (profile?.role !== 'admin') return { error: new Response('Admins only', { status: 403 }) };
+  if (profile?.role !== 'admin') return { ok: false, response: new Response('Admins only', { status: 403 }) };
 
-  return { admin };
+  return { ok: true, admin };
 }
 
 // Create an editor account and assign it to a tracker.
 export const POST: APIRoute = async ({ request }) => {
   const gate = await requireAdmin(request);
-  if ('error' in gate) return gate.error;
+  if (!gate.ok) return gate.response;
   const { admin } = gate;
 
   let body: { email?: string; password?: string; trackerId?: string };
@@ -61,7 +68,7 @@ export const POST: APIRoute = async ({ request }) => {
 // Remove an editor account (auth user + profile via cascade).
 export const DELETE: APIRoute = async ({ request }) => {
   const gate = await requireAdmin(request);
-  if ('error' in gate) return gate.error;
+  if (!gate.ok) return gate.response;
   const { admin } = gate;
 
   let body: { userId?: string };

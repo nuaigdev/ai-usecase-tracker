@@ -77,7 +77,12 @@ export interface TrackerConfig {
     heading?: string;      // may contain <em>…</em> for the teal accent word
     sub?: string;
   };
-  stats?: { num: string; label: string }[];
+  // `num` is a literal value. `auto` instead derives it from the tracker's own
+  // content at render time, so the scorecard can't drift as items are added:
+  //   'platforms'  — distinct platform names (a platform listed in two
+  //                  categories, e.g. ADP, still counts once)
+  //   'categories' — categories that actually hold at least one item
+  stats?: { num?: string; label: string; auto?: 'platforms' | 'categories' }[];
   cta?: { label?: string; title?: string; sub?: string; href?: string; email?: string };
 }
 
