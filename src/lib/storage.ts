@@ -38,6 +38,7 @@ function toUseCase(row: ItemRow): UseCase {
     subCases: d.subCases,
     owner: d.owner,
     lastUpdated: d.lastUpdated,
+    workflowImage: typeof d.workflowImage === 'string' && d.workflowImage ? d.workflowImage : undefined,
   };
 }
 
@@ -64,6 +65,7 @@ function toProcess(row: ItemRow): AutomationProcess {
     businessValue: d.businessValue ?? [],
     techStack: d.techStack ?? [],
     steps: d.steps ?? [],
+    workflowImage: typeof d.workflowImage === 'string' && d.workflowImage ? d.workflowImage : undefined,
   };
 }
 

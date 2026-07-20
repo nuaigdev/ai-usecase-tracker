@@ -34,9 +34,9 @@ new tracker type usually needs *no* schema change.
 
 | `trackers.type` | `items.data` payload | Public component |
 | --- | --- | --- |
-| `usecases` | `description`, `businessValue[]`, `techStack[]`, `limitations[]`, `complianceFlags[]`, `subCases[]` | `CardGrid.tsx` |
+| `usecases` | `description`, `businessValue[]`, `techStack[]`, `limitations[]`, `complianceFlags[]`, `subCases[]`, `workflowImage?` | `CardGrid.tsx` |
 | `integrations` | `tag`, `url` | `IntegrationsView.tsx` |
-| `automation` | `description`, `businessValue[]`, `techStack[]`, `steps[]` (a flow graph) | `AutomationView.tsx` |
+| `automation` | `description`, `businessValue[]`, `techStack[]`, `steps[]` (a flow graph), `workflowImage?` | `AutomationView.tsx` |
 | `bi` | `description`, `kpis[]`, `screenshots[]` (`{url, caption?}`) | `BIView.tsx` |
 
 `src/types.ts` is the source of truth for these shapes; `src/lib/storage.ts` maps
@@ -67,13 +67,15 @@ so RLS — not client-side code — is what actually enforces the above.
 (it ships to the browser). The service-role key lives in `src/lib/supabaseAdmin.ts`,
 which must only be imported from server-only routes.
 
-### Screenshot storage (BI)
+### Image storage (BI screenshots, automation workflow images)
 
-Dashboard screenshots go in the public **`dashboards`** Supabase Storage bucket.
-The admin panel uploads **straight from the browser** with the user's JWT — never
-through an API route, because a Vercel function caps the request body at 4.5 MB
-and dashboard PNGs routinely exceed it. Bucket reads are public; writes require a
-signed-in user (`supabase/migrations/0001_business_intelligence.sql`).
+Two public Supabase Storage buckets: **`dashboards`** (BI screenshots, many per
+item) and **`workflows`** (one workflow image per automation process). The admin
+panel uploads **straight from the browser** with the user's JWT — never through an
+API route, because a Vercel function caps the request body at 4.5 MB and these
+PNGs routinely exceed it. Both buckets: reads public, writes require a signed-in
+user (`supabase/migrations/0001_business_intelligence.sql`,
+`0002_automation_workflow_image.sql`).
 
 ### Migrations
 

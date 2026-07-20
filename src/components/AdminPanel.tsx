@@ -99,6 +99,7 @@ type ItemForm = {
   tag: string; url: string;
   // automation only
   steps: { id: string; title: string; desc: string; kind: AutomationStepKind; next: string[] }[];
+  workflowImage: string;
   // bi only
   kpis: string;
   screenshots: { url: string; caption: string }[];
@@ -110,7 +111,7 @@ function emptyItemForm(): ItemForm {
     description: '', businessValue: '', techStack: '',
     category: 'Resident Care', limitations: '', complianceFlags: '', owner: 'NuAig',
     lastUpdated: new Date().toISOString().split('T')[0],
-    tag: '', url: '', steps: [],
+    tag: '', url: '', steps: [], workflowImage: '',
     kpis: '', screenshots: [],
   };
 }
@@ -125,6 +126,7 @@ function itemToForm(row: ItemRow): ItemForm {
     lastUpdated: d.lastUpdated ?? new Date().toISOString().split('T')[0],
     tag: d.tag ?? '', url: d.url ?? '',
     steps: (d.steps ?? []).map((s: any) => ({ id: s.id, title: s.title, desc: s.desc ?? '', kind: s.kind ?? 'action', next: s.next ?? [] })),
+    workflowImage: d.workflowImage ?? '',
     kpis: joinLines(d.kpis),
     screenshots: (d.screenshots ?? [])
       .map((s: any) => (typeof s === 'string' ? { url: s, caption: '' } : { url: s?.url ?? '', caption: s?.caption ?? '' }))
@@ -137,6 +139,7 @@ function formToData(f: ItemForm, type: TrackerType): any {
   if (type === 'automation') return {
     description: f.description, businessValue: lines(f.businessValue), techStack: lines(f.techStack),
     steps: f.steps.map(s => ({ id: s.id || slugify(s.title), title: s.title, desc: s.desc || undefined, kind: s.kind, next: s.next })),
+    workflowImage: f.workflowImage.trim() || undefined,
   };
   if (type === 'bi') return {
     description: f.description,
@@ -150,6 +153,7 @@ function formToData(f: ItemForm, type: TrackerType): any {
     businessValue: lines(f.businessValue), techStack: lines(f.techStack),
     limitations: lines(f.limitations), complianceFlags: lines(f.complianceFlags),
     owner: f.owner || undefined, lastUpdated: f.lastUpdated || undefined,
+    workflowImage: f.workflowImage.trim() || undefined,
   };
 }
 
@@ -212,7 +216,19 @@ function StepsEditor({ steps, onChange }: { steps: ItemForm['steps']; onChange: 
 // request body cap would reject a large dashboard PNG.
 
 const SCREENSHOT_BUCKET = 'dashboards';
+const WORKFLOW_BUCKET = 'workflows';
 const MAX_SCREENSHOT_BYTES = 15 * 1024 * 1024;
+
+// Uploads a single image file to `bucket`, returns its public URL.
+async function uploadImageToBucket(bucket: string, file: File): Promise<string> {
+  const ext = file.name.split('.').pop()?.toLowerCase() || 'png';
+  const path = `${crypto.randomUUID()}.${ext}`;
+  const sb = getSupabase();
+  const { error } = await sb.storage.from(bucket)
+    .upload(path, file, { contentType: file.type, upsert: false });
+  if (error) throw error;
+  return sb.storage.from(bucket).getPublicUrl(path).data.publicUrl;
+}
 
 function ScreenshotsEditor({
   shots, onChange,
@@ -226,20 +242,14 @@ function ScreenshotsEditor({
     if (!files?.length) return;
     setUploading(true); setError('');
 
-    const sb = getSupabase();
     const added: ItemForm['screenshots'] = [];
     for (const file of Array.from(files)) {
       if (!file.type.startsWith('image/')) { setError(`${file.name} is not an image.`); continue; }
       if (file.size > MAX_SCREENSHOT_BYTES) { setError(`${file.name} is larger than 15 MB.`); continue; }
-
-      const ext = file.name.split('.').pop()?.toLowerCase() || 'png';
-      const path = `${crypto.randomUUID()}.${ext}`;
-      const { error: upErr } = await sb.storage.from(SCREENSHOT_BUCKET)
-        .upload(path, file, { contentType: file.type, upsert: false });
-      if (upErr) { setError(upErr.message); continue; }
-
-      const { data } = sb.storage.from(SCREENSHOT_BUCKET).getPublicUrl(path);
-      added.push({ url: data.publicUrl, caption: '' });
+      try {
+        const url = await uploadImageToBucket(SCREENSHOT_BUCKET, file);
+        added.push({ url, caption: '' });
+      } catch (e: any) { setError(e.message ?? 'Upload failed.'); }
     }
 
     if (added.length) onChange([...shots, ...added]);
@@ -295,6 +305,59 @@ function ScreenshotsEditor({
         {uploading ? 'Uploading…' : shots.length ? '+ Add more screenshots' : '+ Upload screenshots (select as many as you like)'}
       </label>
 
+      {error && <p className="text-xs text-red-600">{error}</p>}
+    </div>
+  );
+}
+
+// ── Workflow image editor (automation) ────────────────────────────────────────
+// Exactly one image per process. Uploading (or removing) replaces whatever is
+// there — enforcing the single-image limit at the source.
+
+function WorkflowImageEditor({
+  value, onChange,
+}: {
+  value: string; onChange: (url: string) => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState('');
+
+  async function upload(file: File | undefined) {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { setError(`${file.name} is not an image.`); return; }
+    if (file.size > MAX_SCREENSHOT_BYTES) { setError(`${file.name} is larger than 15 MB.`); return; }
+    setUploading(true); setError('');
+    try {
+      onChange(await uploadImageToBucket(WORKFLOW_BUCKET, file));
+    } catch (e: any) { setError(e.message ?? 'Upload failed.'); }
+    setUploading(false);
+  }
+
+  if (value) {
+    return (
+      <div className="space-y-2">
+        <div className="relative rounded-lg border border-neutral-200 bg-neutral-50 overflow-hidden">
+          <img src={value} alt="Workflow diagram" className="w-full max-h-72 object-contain bg-white" />
+          <button type="button" onClick={() => onChange('')}
+            className="absolute top-2 right-2 inline-flex items-center justify-center h-8 w-8 rounded-full bg-white/90 text-neutral-500 border border-neutral-200 shadow hover:text-red-500"
+            title="Remove image">
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          </button>
+        </div>
+        {error && <p className="text-xs text-red-600">{error}</p>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <label className={`block w-full py-4 rounded-lg border border-dashed text-center text-sm cursor-pointer transition-colors ${
+        uploading ? 'border-neutral-200 text-neutral-400' : 'border-neutral-300 text-neutral-500 hover:border-brand hover:text-brand'
+      }`}>
+        <input type="file" accept="image/*" className="hidden" disabled={uploading}
+          onChange={e => { void upload(e.target.files?.[0]); e.target.value = ''; }} />
+        {uploading ? 'Uploading…' : '+ Upload workflow image (one per process)'}
+      </label>
       {error && <p className="text-xs text-red-600">{error}</p>}
     </div>
   );
@@ -401,6 +464,9 @@ function ItemEditor({
                   <Field label="Owner"><input className={inputCls} value={form.owner} onChange={e => set('owner', e.target.value)} /></Field>
                   <Field label="Last Updated"><input type="date" className={inputCls} value={form.lastUpdated} onChange={e => set('lastUpdated', e.target.value)} /></Field>
                 </div>
+                <Field label="Workflow Image (optional — one per card)">
+                  <WorkflowImageEditor value={form.workflowImage} onChange={url => set('workflowImage', url)} />
+                </Field>
               </>
             )}
 
@@ -411,6 +477,9 @@ function ItemEditor({
                 </Field>
                 <Field label="Process Flow (steps)">
                   <StepsEditor steps={form.steps} onChange={s => onChange({ ...form, steps: s })} />
+                </Field>
+                <Field label="Workflow Image (optional — one per process)">
+                  <WorkflowImageEditor value={form.workflowImage} onChange={url => set('workflowImage', url)} />
                 </Field>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Field label="Business Value (one per line)"><textarea className={textareaCls} value={form.businessValue} onChange={e => set('businessValue', e.target.value)} /></Field>

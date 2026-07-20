@@ -24,6 +24,7 @@ export interface UseCase {
   subCases?: SubCase[];
   owner?: string;
   lastUpdated?: string;
+  workflowImage?: string; // optional workflow diagram in the 'workflows' bucket
 }
 
 // ── Integration content (items.data for type 'integrations') ─────────────────
@@ -58,6 +59,7 @@ export interface AutomationProcess {
   businessValue: string[];
   techStack: string[];
   steps: AutomationStep[];
+  workflowImage?: string; // single workflow diagram in the 'workflows' bucket
 }
 
 // ── Business intelligence content (items.data for type 'bi') ─────────────────

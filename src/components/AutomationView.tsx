@@ -1,5 +1,38 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Tracker, AutomationProcess, AutomationStep, AutomationStepKind } from '../types';
+
+// ── Full-screen image viewer ──────────────────────────────────────────────────
+// A single workflow image over a blurred backdrop; Esc / backdrop / button close.
+
+function ImageLightbox({ url, onClose }: { url: string; onClose: () => void }) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
+    window.addEventListener('keydown', onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = prev; };
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-8">
+      <div className="absolute inset-0 bg-neutral-950/80 backdrop-blur-md" onClick={onClose} aria-hidden="true" />
+      <button
+        onClick={onClose}
+        aria-label="Close"
+        className="absolute top-4 right-4 z-10 inline-flex items-center justify-center h-11 w-11 rounded-full bg-white/10 text-white backdrop-blur hover:bg-white/25 transition-colors"
+      >
+        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </button>
+      <img
+        src={url}
+        alt="Workflow diagram"
+        className="relative z-[1] max-w-[92vw] max-h-[88vh] object-contain rounded-lg shadow-2xl bg-white"
+      />
+    </div>
+  );
+}
 
 // ── Flow diagram ──────────────────────────────────────────────────────────────
 // Renders steps as depth-ordered columns (left→right) with SVG connectors drawn
@@ -156,7 +189,9 @@ function Bullet({ items }: { items: string[] }) {
   );
 }
 
-function ProcessCard({ p, expanded, onToggle }: { p: AutomationProcess; expanded: boolean; onToggle: () => void }) {
+function ProcessCard({ p, expanded, onToggle, onOpenImage }: {
+  p: AutomationProcess; expanded: boolean; onToggle: () => void; onOpenImage: (url: string) => void;
+}) {
   return (
     <div className={`bg-white rounded-2xl border transition-all duration-300 ${
       expanded ? 'border-brand shadow-lg shadow-brand/10' : 'border-neutral-200 hover:border-neutral-300 hover:shadow-md'
@@ -168,6 +203,14 @@ function ProcessCard({ p, expanded, onToggle }: { p: AutomationProcess; expanded
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
                 {p.steps.length} step{p.steps.length === 1 ? '' : 's'}
               </span>
+              {p.workflowImage && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+                  <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" />
+                  </svg>
+                  Workflow
+                </span>
+              )}
             </div>
             <h3 className="text-lg font-semibold text-neutral-900 mb-2 leading-snug">{p.title}</h3>
             <p className="text-sm text-neutral-500 leading-relaxed">{p.summary}</p>
@@ -192,6 +235,24 @@ function ProcessCard({ p, expanded, onToggle }: { p: AutomationProcess; expanded
               <FlowDiagram steps={p.steps} />
             </div>
           </div>
+
+          {p.workflowImage && (
+            <div>
+              <h4 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">Workflow</h4>
+              <button
+                onClick={() => onOpenImage(p.workflowImage!)}
+                className="block w-full rounded-xl border border-neutral-200 bg-neutral-50 overflow-hidden cursor-zoom-in group"
+                aria-label="Open workflow image full screen"
+              >
+                <img
+                  src={p.workflowImage}
+                  alt={`${p.title} workflow`}
+                  loading="lazy"
+                  className="w-full max-h-[460px] object-contain bg-white transition-transform group-hover:scale-[1.01]"
+                />
+              </button>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {p.businessValue.length > 0 && (
@@ -221,6 +282,7 @@ function ProcessCard({ p, expanded, onToggle }: { p: AutomationProcess; expanded
 
 export default function AutomationView({ tracker }: { tracker: Tracker }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const processes = tracker.processes;
 
   if (processes.length === 0) {
@@ -239,8 +301,10 @@ export default function AutomationView({ tracker }: { tracker: Tracker }) {
           p={p}
           expanded={expandedId === p.id}
           onToggle={() => setExpandedId(expandedId === p.id ? null : p.id)}
+          onOpenImage={setLightboxUrl}
         />
       ))}
+      {lightboxUrl && <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />}
     </div>
   );
 }

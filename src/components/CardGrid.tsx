@@ -1,5 +1,60 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import type { UseCase, SubCase } from '../types';
+
+// ── Full-screen image viewer ──────────────────────────────────────────────────
+// A single workflow image over a blurred backdrop; Esc / backdrop / button close.
+
+function ImageLightbox({ url, onClose }: { url: string; onClose: () => void }) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
+    window.addEventListener('keydown', onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = prev; };
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-8">
+      <div className="absolute inset-0 bg-neutral-950/80 backdrop-blur-md" onClick={onClose} aria-hidden="true" />
+      <button
+        onClick={onClose}
+        aria-label="Close"
+        className="absolute top-4 right-4 z-10 inline-flex items-center justify-center h-11 w-11 rounded-full bg-white/10 text-white backdrop-blur hover:bg-white/25 transition-colors"
+      >
+        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </button>
+      <img
+        src={url}
+        alt="Workflow diagram"
+        className="relative z-[1] max-w-[92vw] max-h-[88vh] object-contain rounded-lg shadow-2xl bg-white"
+      />
+    </div>
+  );
+}
+
+// ── Workflow image block (shown inside an expanded card) ───────────────────────
+
+function WorkflowImage({ url, title, onOpen }: { url: string; title: string; onOpen: () => void }) {
+  return (
+    <div>
+      <SectionLabel>Workflow</SectionLabel>
+      <button
+        onClick={onOpen}
+        className="block w-full rounded-xl border border-neutral-200 bg-neutral-50 overflow-hidden cursor-zoom-in group"
+        aria-label="Open workflow image full screen"
+      >
+        <img
+          src={url}
+          alt={`${title} workflow`}
+          loading="lazy"
+          className="w-full max-h-[460px] object-contain bg-white transition-transform group-hover:scale-[1.01]"
+        />
+      </button>
+    </div>
+  );
+}
 
 const CATEGORY_COLORS: Record<string, string> = {
   'Resident Care':        'bg-rose-100 text-rose-700',
@@ -107,7 +162,7 @@ function SubCaseDetail({ sc }: { sc: SubCase }) {
 
 // ── Expanded card body ────────────────────────────────────────────────────────
 
-function ExpandedBody({ uc }: { uc: UseCase }) {
+function ExpandedBody({ uc, onOpenImage }: { uc: UseCase; onOpenImage: (url: string) => void }) {
   const [activeTab, setActiveTab] = useState<'overview' | number>('overview');
   const hasSubCases = !!uc.subCases?.length;
 
@@ -203,13 +258,21 @@ function ExpandedBody({ uc }: { uc: UseCase }) {
           </div>
         </div>
       )}
+
+      {uc.workflowImage && (
+        <div className="mt-6">
+          <WorkflowImage url={uc.workflowImage} title={uc.title} onOpen={() => onOpenImage(uc.workflowImage!)} />
+        </div>
+      )}
     </div>
   );
 }
 
 // ── Card ──────────────────────────────────────────────────────────────────────
 
-function Card({ uc, expanded, onToggle }: { uc: UseCase; expanded: boolean; onToggle: () => void }) {
+function Card({ uc, expanded, onToggle, onOpenImage }: {
+  uc: UseCase; expanded: boolean; onToggle: () => void; onOpenImage: (url: string) => void;
+}) {
   const cc = categoryColor(uc.category);
 
   return (
@@ -235,6 +298,14 @@ function Card({ uc, expanded, onToggle }: { uc: UseCase; expanded: boolean; onTo
                   {uc.subCases.length} sub-cases
                 </span>
               ) : null}
+              {uc.workflowImage && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+                  <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" />
+                  </svg>
+                  Workflow
+                </span>
+              )}
             </div>
             <h3 className="text-lg font-semibold text-neutral-900 mb-2 leading-snug">{uc.title}</h3>
             <p className="text-sm text-neutral-500 leading-relaxed">{uc.summary}</p>
@@ -251,7 +322,7 @@ function Card({ uc, expanded, onToggle }: { uc: UseCase; expanded: boolean; onTo
         </div>
       </button>
 
-      {expanded && <ExpandedBody uc={uc} />}
+      {expanded && <ExpandedBody uc={uc} onOpenImage={onOpenImage} />}
     </div>
   );
 }
@@ -262,6 +333,7 @@ export default function CardGrid({ usecases }: { usecases: UseCase[] }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filterCat, setFilterCat] = useState('All');
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   const categories = useMemo(
     () => ['All', ...Array.from(new Set(usecases.map(u => u.category)))],
@@ -337,10 +409,13 @@ export default function CardGrid({ usecases }: { usecases: UseCase[] }) {
               uc={uc}
               expanded={expandedId === uc.id}
               onToggle={() => setExpandedId(expandedId === uc.id ? null : uc.id)}
+              onOpenImage={setLightboxUrl}
             />
           ))}
         </div>
       )}
+
+      {lightboxUrl && <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />}
     </div>
   );
 }
